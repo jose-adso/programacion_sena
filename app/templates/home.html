@@ -410,7 +410,7 @@
 <script>
 // Variables del usuario actual pasadas desde el servidor
 let currentUserRol = {{ current_user_rol | tojson }};
-let currentUserName = {{ current_user.nombre | tojson }};
+let currentUserName = {{ username | tojson }};
 let currentUserAsignatura = {{ current_user_asignatura | tojson }};
 let isGestor = currentUserRol === 'gestor';
 
