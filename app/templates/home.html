@@ -1,0 +1,1329 @@
+{% extends "base.html" %}
+
+{% block title %}Asignación Instructor{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Bienvenido, {{ username }}!</h1>
+    <p>Has iniciado sesión satisfactoriamente.</p>
+    
+    <div class="row mt-4">
+        <div class="col-md-8">
+            <div class="card mb-3">
+                <div class="card-header bg-warning text-dark">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="mb-0">Calendario de Asignaciones</h5>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <!-- Filtros con búsqueda -->
+                            {% if current_user.rol_activo in ['super admin', 'administrador', 'gestor', 'instructor'] %}
+                            <div class="input-group input-group-sm" style="width: 280px;">
+                                <span class="input-group-text" style="font-size: 0.75rem;">Ficha:</span>
+                                <input type="text" id="search-ficha" class="form-control form-control-sm" placeholder="Buscar ficha o programa..." onkeyup="filterFichas()">
+                                <select id="filter-ficha" class="form-select form-select-sm" style="width: 80px;" onchange="applyFilters()">
+                                    <option value="">Todas</option>
+                                    {% if programs %}
+                                    {% for program in programs %}
+                                    <option value="{{ program.id }}" data-ficha="{{ program.ficha_number }}" data-programa="{{ program.program_name }}">{{ program.ficha_number }}</option>
+                                    {% endfor %}
+                                    {% endif %}
+                                </select>
+                            </div>
+                            {% if current_user.rol_activo == 'instructor' %}
+                            <div class="input-group input-group-sm" style="width: 320px;">
+                                <span class="input-group-text" style="font-size: 0.75rem;">Instructor:</span>
+                                <input type="text" class="form-control form-control-sm" value="{{ current_user.nombre }}" readonly>
+                                <select id="filter-instructor" class="form-select form-select-sm" style="display: none;" onchange="applyFilters();">
+                                    <option value="{{ current_user.nombre }}" selected>{{ current_user.nombre }}</option>
+                                </select>
+                            </div>
+                            {% else %}
+                            <div class="input-group input-group-sm" style="width: 320px;">
+                                <span class="input-group-text" style="font-size: 0.75rem;">Instructor:</span>
+                                <input type="text" id="search-instructor" class="form-control form-control-sm" placeholder="Buscar instructor..." onkeyup="filterInstructors()">
+                                <select id="filter-instructor" class="form-select form-select-sm" style="width: 80px;" onchange="applyFilters();">
+                                    <option value="">Todos</option>
+                                    <option value="__available__">Disponibles (sin clase esta semana)</option>
+                                    {% if available_instructors %}
+                                    {% for user in available_instructors %}
+                                    <option value="{{ user.nombre }}" data-asignatura="{{ user.asignatura or '' }}" data-profile="{{ user.perfil_profesional or '' }}">{{ user.nombre }} ({{ user.rol }}) - Disponible</option>
+                                    {% endfor %}
+                                    {% endif %}
+                                    {% if user_instructors %}
+                                    {% for user in user_instructors %}
+                                    <option value="{{ user.nombre }}" data-asignatura="{{ user.asignatura or '' }}" data-profile="{{ user.perfil_profesional or '' }}">{{ user.nombre }} ({{ user.rol }})</option>
+                                    {% endfor %}
+                                    {% endif %}
+                                    {% if instructors %}
+                                    {% for instructor in instructors %}
+                                    <option value="{{ instructor }}" data-profile="">{{ instructor }}</option>
+                                    {% endfor %}
+                                    {% endif %}
+                                </select>
+                            </div>
+                            {% if current_user.rol_activo in ['super admin', 'administrador'] %}
+                            <div class="input-group input-group-sm" style="width: 320px;">
+                                <span class="input-group-text" style="font-size: 0.75rem;">Perfil:</span>
+                                <input type="text" id="search-profile" class="form-control form-control-sm" placeholder="Filtrar perfil profesional..." onkeyup="filterInstructors(); applyFilters();">
+                            </div>
+                            {% endif %}
+                            {% endif %}
+                            {% endif %}
+                            <!-- Vista Semanal/Mensual -->
+                            <select id="view-mode" class="form-select form-select-sm" style="width: 100px;" onchange="changeViewMode()">
+                                <option value="month">Mes</option>
+                                <option value="week">Semana</option>
+                            </select>
+                            <!-- Selector de semana (solo visible en modo semana) -->
+                            <select id="week-select" class="form-select form-select-sm" style="width: 80px; display: none;" onchange="loadCalendar()">
+                                <option value="0">Sem 1</option>
+                                <option value="1">Sem 2</option>
+                                <option value="2">Sem 3</option>
+                                <option value="3">Sem 4</option>
+                                <option value="4">Sem 5</option>
+                            </select>
+                            <!-- Mes y Año -->
+                            <select id="month-select" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="loadCalendar()">
+                                <option value="0">Enero</option>
+                                <option value="1">Febrero</option>
+                                <option value="2">Marzo</option>
+                                <option value="3">Abril</option>
+                                <option value="4">Mayo</option>
+                                <option value="5">Junio</option>
+                                <option value="6">Julio</option>
+                                <option value="7">Agosto</option>
+                                <option value="8">Septiembre</option>
+                                <option value="9">Octubre</option>
+                                <option value="10">Noviembre</option>
+                                <option value="11">Diciembre</option>
+                            </select>
+                            <input type="number" id="year-select" class="form-control form-control-sm d-inline-block" style="width: 80px;" value="2026" min="2020" max="2030" onchange="loadCalendar()">
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-2">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm mb-0" style="font-size: 0.85rem; table-layout: fixed; width: 100%;">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th class="text-center">Dom</th>
+                                    <th class="text-center">Lun</th>
+                                    <th class="text-center">Mar</th>
+                                    <th class="text-center">Mié</th>
+                                    <th class="text-center">Jue</th>
+                                    <th class="text-center">Vie</th>
+                                    <th class="text-center">Sáb</th>
+                                </tr>
+                            </thead>
+                            <tbody id="calendar-body">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Leyenda -->
+            <div class="mb-2">
+                <span class="badge bg-primary me-1">Mañana (7am-12pm)</span>
+                <span class="badge bg-warning text-dark me-1">Mixta (12pm-6pm)</span>
+                <span class="badge bg-dark">Nocturna (6pm-10pm)</span>
+            </div>
+            
+            <!-- Si no es admin pero tiene asignatura, mostrar su calendario -->
+            {% if current_user.rol_activo == 'instructor' and current_user_asignatura %}
+            <div class="alert alert-info mb-2">
+                <i class="bi bi-info-circle"></i> <strong>Tu horario:</strong> Estás viendo las clases asignadas a <strong>{{ current_user.nombre }}</strong> para la materia <strong>{{ current_user_asignatura }}</strong>
+            </div>
+            {% endif %}
+            
+            <!-- Nuevo div para Competencias y Resultados por Semana -->
+            {% if current_user.rol_activo in ['super admin', 'administrador', 'gestor', 'instructor'] or current_user_asignatura %}
+            <div class="card mt-3">
+                <div class="card-header bg-info text-white">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="mb-0">Competencias y Resultados de Aprendizaje</h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="mb-0 me-2">Semana:</label>
+                            <select id="competency-week-select" class="form-select form-select-sm" style="width: 100px;" onchange="loadCompetenciesByWeek()">
+                                <option value="0">Semana 1</option>
+                                <option value="1">Semana 2</option>
+                                <option value="2">Semana 3</option>
+                                <option value="3">Semana 4</option>
+                                <option value="4">Semana 5</option>
+                            </select>
+                            <button class="btn btn-sm btn-light" onclick="loadCompetenciesByWeek()">
+                                <i class="bi bi-arrow-clockwise"></i> Actualizar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="competencies-container">
+                        <p class="text-muted">Cargando docentes y competencias...</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="col-md-4">
+            <div class="card mb-3">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">Asignaciones por Semana</h5>
+                </div>
+                <div class="card-body p-2" style="max-height: 400px; overflow-y: auto;">
+                    <div id="assignments-panel">
+                        <p class="text-muted small">Cargando asignaciones...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header bg-secondary text-white">
+                    <h5>Información</h5>
+                </div>
+                <div class="card-body">
+                    <p>Usuario: <strong>{{ username }}</strong></p>
+                    <p>Rol: <strong>{{ current_user.rol }}</strong></p>
+                    <p>Perfil profesional: <strong>{{ current_user.perfil_profesional or 'No registrado' }}</strong></p>
+                    {% if current_user.rol_activo == 'instructor' %}
+                    {% if not current_user.perfil_profesional %}
+                    <div class="mt-3">
+                        <label for="perfil-profesional-input" class="form-label">Actualizar perfil profesional</label>
+                        <textarea id="perfil-profesional-input" class="form-control form-control-sm" rows="3" maxlength="200" placeholder="Describe tu perfil profesional...">{{ current_user.perfil_profesional or '' }}</textarea>
+                        <button class="btn btn-sm btn-primary mt-2" onclick="saveMyProfessionalProfile()">Guardar perfil</button>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small mb-0">El perfil profesional ya fue registrado y no se puede volver a editar.</p>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <a href="{{ url_for('auth.logout') }}" class="btn btn-danger mt-3">Cerrar sesión</a>
+</div>
+
+<!-- Modal para asignar instructor -->
+<div class="modal fade" id="assignmentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">Asignar Instructor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="selectedDate" class="fw-bold"></p>
+                
+                <div class="mb-3">
+                    <label class="form-label">Seleccionar Ficha:</label>
+                    <input type="text" id="modal-search-ficha" class="form-control form-control-sm mb-2" placeholder="Filtrar ficha o programa..." onkeyup="filterModalFichas()">
+                    <select id="modal-ficha" class="form-select">
+                        <option value="">-- Seleccionar Ficha --</option>
+                        {% if programs %}
+                        {% for program in programs %}
+                        <option value="{{ program.id }}" data-ficha="{{ program.ficha_number }}" data-programa="{{ program.program_name }}">{{ program.ficha_number }} - {{ program.program_name }}</option>
+                        {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Instructor:</label>
+                    {% if current_user.rol_activo == 'instructor' %}
+                    <input type="text" class="form-control" value="{{ current_user.nombre }}" readonly>
+                    <select id="modal-instructor" class="form-select" style="display: none;">
+                        <option value="{{ current_user.nombre }}" data-instructor="{{ current_user.nombre }}" selected>{{ current_user.nombre }}</option>
+                    </select>
+                    {% else %}
+                    <input type="text" id="modal-search-instructor" class="form-control form-control-sm mb-2" placeholder="Filtrar instructor..." onkeyup="filterModalInstructors()">
+                    <select id="modal-instructor" class="form-select">
+                        <option value="">-- Seleccionar Instructor --</option>
+                        {% if user_instructors %}
+                        {% for user in user_instructors %}
+                        <option value="{{ user.nombre }}" data-instructor="{{ user.nombre }}">{{ user.nombre }} ({{ user.rol }})</option>
+                        {% endfor %}
+                        {% endif %}
+                        {% if instructors %}
+                        {% for instructor in instructors %}
+                        <option value="{{ instructor }}" data-instructor="{{ instructor }}">{{ instructor }}</option>
+                        {% endfor %}
+                        {% endif %}
+                    </select>
+                    {% endif %}
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Materia/Asignatura:</label>
+                    <input type="text" id="modal-materia" class="form-control" placeholder="Ej: TIC, Matemáticas">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Jornada:</label>
+                    <select id="modal-jornada" class="form-select">
+                        <option value="7">Mañana (7am-12pm)</option>
+                        <option value="12">Mixta (12pm-6pm)</option>
+                        <option value="18">Nocturna (6pm-10pm)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                {% if current_user.rol_activo != 'gestor' %}
+                <button type="button" class="btn btn-danger" onclick="deleteAssignment()">Eliminar</button>
+                {% endif %}
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                {% if current_user.rol_activo != 'gestor' %}
+                <button type="button" class="btn btn-primary" onclick="saveAssignment()">Guardar</button>
+                {% else %}
+                <button type="button" class="btn btn-secondary" disabled title="Los gestores tienen permiso de solo lectura">Guardar (Solo lectura)</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Competencias y Resultados -->
+<div class="modal fade" id="competencyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">Agregar Competencia y Resultado de Aprendizaje</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <strong>Docente:</strong> <span id="comp-instructor-name"></span><br>
+                    <strong>Asignatura:</strong> <span id="comp-subject"></span><br>
+                    <strong>Ficha:</strong> <span id="comp-ficha"></span>
+                </div>
+                
+                <input type="hidden" id="comp-assignment-id">
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Competencia:</label>
+                    <textarea id="comp-competencia" class="form-control" rows="3" placeholder="Ej: Aplicar herramientas ofimáticas para la gestión de información..."></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Resultado de Aprendizaje:</label>
+                    <textarea id="comp-resultado" class="form-control" rows="3" placeholder="Ej: Gestionar información utilizando herramientas ofimáticas según los requerimientos del usuario..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                {% if current_user.rol_activo != 'gestor' %}
+                <button type="button" class="btn btn-info text-white" onclick="saveCompetency()">Guardar Competencia y Resultado</button>
+                {% else %}
+                <button type="button" class="btn btn-secondary" disabled title="Los gestores tienen permiso de solo lectura">Guardar (Solo lectura)</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Competencias por Semana Completa -->
+<div class="modal fade" id="weeklyCompetencyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">Asignar Competencia a Semana Completa (Lunes - Viernes)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-info-circle"></i> Esta acción asignará la misma competencia y resultado de aprendizaje a todos los días de la semana (Lunes a Viernes) para el docente y materia seleccionados.
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Seleccionar Semana:</label>
+                        <select id="weekly-week-select" class="form-select" onchange="updateWeekDatesDisplay()">
+                            <option value="">-- Seleccionar Semana --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Fechas de la Semana:</label>
+                        <div id="week-dates-display" class="alert alert-secondary py-2 mb-0">
+                            <small>Seleccione una semana para ver las fechas</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Seleccionar Docente:</label>
+                        <select id="weekly-instructor" class="form-select" onchange="updateWeeklySubjectOptions()">
+                            <option value="">-- Seleccionar Docente --</option>
+                            {% if user_instructors %}
+                            {% for user in user_instructors %}
+                            <option value="{{ user.nombre }}">{{ user.nombre }} ({{ user.rol }})</option>
+                            {% endfor %}
+                            {% endif %}
+                            {% if instructors %}
+                            {% for instructor in instructors %}
+                            <option value="{{ instructor }}">{{ instructor }}</option>
+                            {% endfor %}
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Seleccionar Materia:</label>
+                        <select id="weekly-subject" class="form-select">
+                            <option value="">-- Seleccionar Materia --</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Programa/Ficha:</label>
+                    <select id="weekly-program" class="form-select">
+                        <option value="">-- Seleccionar Ficha --</option>
+                        {% if programs %}
+                        {% for program in programs %}
+                        <option value="{{ program.id }}">{{ program.ficha_number }} - {{ program.program_name }}</option>
+                        {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Competencia:</label>
+                    <textarea id="weekly-competencia" class="form-control" rows="3" placeholder="Ej: Aplicar herramientas ofimáticas para la gestión de información..."></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Resultado de Aprendizaje:</label>
+                    <textarea id="weekly-resultado" class="form-control" rows="3" placeholder="Ej: Gestionar información utilizando herramientas ofimáticas según los requerimientos del usuario..."></textarea>
+                {% if current_user.rol_activo != 'gestor' %}
+                <button type="button" class="btn btn-warning" onclick="saveWeeklyCompetency()">Guardar para Toda la Semana</button>
+                {% else %}
+                <button type="button" class="btn btn-secondary" disabled title="Los gestores tienen permiso de solo lectura">Guardar (Solo lectura)</button>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning" onclick="saveWeeklyCompetency()">Guardar para Toda la Semana</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Variables del usuario actual pasadas desde el servidor
+let currentUserRol = {{ current_user_rol | tojson }};
+let currentUserName = {{ current_user.nombre | tojson }};
+let currentUserAsignatura = {{ current_user_asignatura | tojson }};
+let isGestor = currentUserRol === 'gestor';
+
+let currentMonth = new Date().getMonth();
+let currentYear = new Date().getFullYear();
+let currentAssignments = {};
+let selectedDayInfo = null;
+let currentViewMode = 'month';
+let currentWeek = 0;
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('month-select').value = currentMonth;
+    document.getElementById('year-select').value = currentYear;
+    loadCalendar();
+    loadAssignmentsPanel();
+});
+
+function changeViewMode() {
+    currentViewMode = document.getElementById('view-mode').value;
+    const weekSelect = document.getElementById('week-select');
+    
+    if (currentViewMode === 'week') {
+        weekSelect.style.display = 'inline-block';
+    } else {
+        weekSelect.style.display = 'none';
+    }
+    
+    loadCalendar();
+}
+
+function applyFilters() {
+    loadCalendar();
+    loadAssignmentsPanel();
+}
+
+function saveMyProfessionalProfile() {
+    const input = document.getElementById('perfil-profesional-input');
+    if (!input) return;
+
+    fetch('/update_my_professional_profile', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            perfil_profesional: input.value
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Perfil profesional actualizado');
+            window.location.reload();
+        } else {
+            alert('Error: ' + (data.error || 'No se pudo actualizar el perfil'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error de conexión al actualizar perfil');
+    });
+}
+
+// Función para filtrar fichas por número o nombre de programa
+function filterFichas() {
+    const searchInput = document.getElementById('search-ficha').value.toLowerCase();
+    const filterSelect = document.getElementById('filter-ficha');
+    const options = filterSelect.getElementsByTagName('option');
+    
+    for (let i = 1; i < options.length; i++) {
+        const fichaNum = options[i].getAttribute('data-ficha') || '';
+        const programa = options[i].getAttribute('data-programa') || '';
+        const searchText = (fichaNum + ' ' + programa).toLowerCase();
+        
+        if (searchText.includes(searchInput)) {
+            options[i].style.display = '';
+        } else {
+            options[i].style.display = 'none';
+        }
+    }
+}
+
+// Función para filtrar instructores por nombre
+function filterInstructors() {
+    const searchInputEl = document.getElementById('search-instructor');
+    const searchInput = searchInputEl ? searchInputEl.value.toLowerCase() : '';
+    const profileInputEl = document.getElementById('search-profile');
+    const profileInput = profileInputEl ? profileInputEl.value.toLowerCase().trim() : '';
+    const filterSelect = document.getElementById('filter-instructor');
+    if (!filterSelect) return;
+    const options = filterSelect.getElementsByTagName('option');
+    
+    for (let i = 1; i < options.length; i++) {
+        const instructorName = options[i].textContent.toLowerCase();
+        const optionValue = options[i].value;
+        const profileText = (options[i].getAttribute('data-profile') || '').toLowerCase();
+        const matchesName = instructorName.includes(searchInput);
+        const matchesProfile = !profileInput || profileText.includes(profileInput);
+        
+        // La opción de disponibilidad se oculta al filtrar por perfil.
+        if (optionValue === '__available__') {
+            options[i].style.display = profileInput ? 'none' : '';
+            continue;
+        }
+        
+        if (matchesName && matchesProfile) {
+            options[i].style.display = '';
+        } else {
+            options[i].style.display = 'none';
+        }
+    }
+
+    const selectedOption = filterSelect.options[filterSelect.selectedIndex];
+    if (selectedOption && selectedOption.style.display === 'none') {
+        filterSelect.value = '';
+    }
+}
+
+function filterModalFichas() {
+    const searchInput = document.getElementById('modal-search-ficha').value.toLowerCase();
+    const select = document.getElementById('modal-ficha');
+    const options = select.getElementsByTagName('option');
+
+    for (let i = 1; i < options.length; i++) {
+        const fichaNum = (options[i].getAttribute('data-ficha') || '').toLowerCase();
+        const programa = (options[i].getAttribute('data-programa') || '').toLowerCase();
+        const searchText = `${fichaNum} ${programa}`;
+        options[i].style.display = searchText.includes(searchInput) ? '' : 'none';
+    }
+}
+
+function filterModalInstructors() {
+    const searchInputEl = document.getElementById('modal-search-instructor');
+    if (!searchInputEl) return;
+    const searchInput = searchInputEl.value.toLowerCase();
+    const select = document.getElementById('modal-instructor');
+    if (!select) return;
+    const options = select.getElementsByTagName('option');
+
+    for (let i = 1; i < options.length; i++) {
+        const instructorName = (options[i].getAttribute('data-instructor') || options[i].textContent || '').toLowerCase();
+        options[i].style.display = instructorName.includes(searchInput) ? '' : 'none';
+    }
+}
+
+function loadAssignmentsPanel() {
+    const programId = document.getElementById('filter-ficha').value;
+    const instructorName = document.getElementById('filter-instructor').value;
+    const profileInput = document.getElementById('search-profile');
+    const professionalProfile = profileInput ? profileInput.value.trim() : '';
+    
+    let url = `/get_current_assignments?month=${currentMonth}&year=${currentYear}`;
+    
+    if (programId) {
+        url += `&program_id=${programId}`;
+    }
+    if (instructorName) {
+        url += `&instructor_name=${encodeURIComponent(instructorName)}`;
+    }
+    if (professionalProfile) {
+        url += `&professional_profile=${encodeURIComponent(professionalProfile)}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            const panel = document.getElementById('assignments-panel');
+            
+            if (Object.keys(data).length === 0) {
+                panel.innerHTML = '<p class="text-muted small">No hay asignaciones para los filtros seleccionados.</p>';
+                return;
+            }
+            
+            // Recopilar todas las asignaciones
+            let allAssignments = [];
+            for (const [instructor, assignments] of Object.entries(data)) {
+                for (const assign of assignments) {
+                    assign.instructor = instructor;
+                    allAssignments.push(assign);
+                }
+            }
+            
+            // Ordenar por instructor, día y hora
+            allAssignments.sort((a, b) => {
+                if (a.instructor !== b.instructor) return a.instructor.localeCompare(b.instructor);
+                if (a.day_number !== b.day_number) return a.day_number - b.day_number;
+                return a.hour - b.hour;
+            });
+            
+            // Agrupar por semana y luego por instructor
+            const weeks = {};
+            const daysOrder = {'Domingo': 0, 'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Jueves': 4, 'Viernes': 5, 'Sábado': 6};
+            const daysShort = {'Domingo': 'Dom', 'Lunes': 'Lun', 'Martes': 'Mar', 'Miércoles': 'Mié', 'Jueves': 'Jue', 'Viernes': 'Vie', 'Sábado': 'Sáb'};
+            
+            for (const assign of allAssignments) {
+                const weekNumber = Math.ceil(assign.day_number / 7);
+                const weekKey = `Semana ${weekNumber}`;
+                if (!weeks[weekKey]) {
+                    weeks[weekKey] = {};
+                }
+                const instructorKey = assign.instructor;
+                if (!weeks[weekKey][instructorKey]) {
+                    weeks[weekKey][instructorKey] = { jornadas: {} };
+                }
+                // Agrupar por jornada
+                const jornadaKey = assign.hour;
+                if (!weeks[weekKey][instructorKey].jornadas[jornadaKey]) {
+                    weeks[weekKey][instructorKey].jornadas[jornadaKey] = { subject: assign.subject, days: [], ficha: assign.ficha };
+                }
+                weeks[weekKey][instructorKey].jornadas[jornadaKey].days.push(assign.day);
+            }
+            
+            let html = '';
+            
+            for (const [week, instructors] of Object.entries(weeks)) {
+                html += `<div class="mb-3">`;
+                html += `<strong class="text-primary">${week}</strong>`;
+                html += `<ul class="list-group list-group-flush small">`;
+                
+                for (const [instructor, info] of Object.entries(instructors)) {
+                    // Ordenar jornadas
+                    const jornadas = Object.entries(info.jornadas).sort((a, b) => a[0] - b[0]);
+                    
+                    for (const [jornada, data] of jornadas) {
+                        const jornadaLabel = jornada === '7' ? 'M' : (jornada === '12' ? 'X' : 'N');
+                        const jornadaClass = jornada === '7' ? 'bg-primary' : (jornada === '12' ? 'bg-warning text-dark' : 'bg-dark');
+                        
+                        // Formatear días
+                        const daysStr = data.days.map(d => daysShort[d] || d.substring(0,3)).join(', ');
+                        
+                        html += `<li class="list-group-item p-2" style="border-left: 3px solid var(--sena-green);">`;
+                        html += `<div class="d-flex justify-content-between align-items-start">`;
+                        html += `<div>`;
+                        html += `<strong class="text-dark">${instructor}</strong> <span class="badge ${jornadaClass}">${jornadaLabel}</span>`;
+                        html += `<div class="mt-1">`;
+                        html += `<span class="badge bg-success me-1">${data.ficha}</span>`;
+                        html += `<span class="text-primary fw-bold" style="font-size: 0.9rem;">${data.subject}</span>`;
+                        html += `<span class="text-muted" style="font-size: 0.85rem;">(${daysStr})</span>`;
+                        html += `</div>`;
+                        html += `</div>`;
+                        html += `</div>`;
+                        html += `</li>`;
+                    }
+                }
+                
+                html += `</ul></div>`;
+            }
+            
+            panel.innerHTML = html;
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+function loadCalendar() {
+    currentMonth = parseInt(document.getElementById('month-select').value);
+    currentYear = parseInt(document.getElementById('year-select').value);
+    currentWeek = parseInt(document.getElementById('week-select').value);
+    
+    const programId = document.getElementById('filter-ficha').value;
+    const instructorName = document.getElementById('filter-instructor').value;
+    const profileInput = document.getElementById('search-profile');
+    const professionalProfile = profileInput ? profileInput.value.trim() : '';
+    
+    let url = '';
+    
+    if (currentViewMode === 'week') {
+        url = `/get_assignments_by_week?month=${currentMonth}&year=${currentYear}&week=${currentWeek}`;
+    } else {
+        url = `/get_calendar_data?month=${currentMonth}&year=${currentYear}`;
+    }
+    
+    // Agregar filtros a la URL
+    if (programId) {
+        url += `&program_id=${programId}`;
+    }
+    if (instructorName) {
+        url += `&instructor_name=${encodeURIComponent(instructorName)}`;
+    }
+    if (professionalProfile) {
+        url += `&professional_profile=${encodeURIComponent(professionalProfile)}`;
+    }
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (currentViewMode === 'week') {
+                currentAssignments = data.assignments;
+            } else {
+                currentAssignments = data;
+            }
+            generateCalendar();
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+function generateCalendar() {
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const lastDay = new Date(currentYear, currentMonth + 1, 0);
+    const startDayOfWeek = firstDay.getDay();
+    
+    let html = '';
+    let day = 1;
+    const daysInMonth = lastDay.getDate();
+    const weeksCount = Math.ceil((daysInMonth + startDayOfWeek) / 7);
+    
+    const daysNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const isInstructorView = currentUserRol === 'instructor';
+    
+    if (currentViewMode === 'week') {
+        // Vista semanal
+        const weekStart = currentWeek * 7 - startDayOfWeek + 1;
+        const weekEnd = Math.min(weekStart + 6, daysInMonth);
+        
+        html += '<tr>';
+        for (let d = 0; d < 7; d++) {
+            const dayNum = weekStart + d;
+            if (dayNum > 0 && dayNum <= daysInMonth) {
+                const dayName = daysNames[d];
+                
+                const mananaKey = `${dayNum}-7`;
+                const mixtaKey = `${dayNum}-12`;
+                const nocturnaKey = `${dayNum}-18`;
+                
+                const mananaAssign = currentAssignments[mananaKey];
+                const mixtaAssign = currentAssignments[mixtaKey];
+                const nocturnaAssign = currentAssignments[nocturnaKey];
+                
+                html += `<td class="p-1" style="width: 14.285%; height: 120px; vertical-align: top;">`;
+                html += `<div class="text-center fw-bold small">${dayName}<br>${dayNum}</div>`;
+                
+                // Mostrar jornadas
+                if (mananaAssign) {
+                    html += `<div class="badge bg-primary w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 7, '${mananaAssign.instructor}', '${mananaAssign.subject}', ${mananaAssign.program_id || 0})">M: ${mananaAssign.subject}</div>`;
+                } else if (!isInstructorView) {
+                    html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${dayNum}, '${dayName}', 7)">M: Sin asignar</div>`;
+                }
+                
+                if (mixtaAssign) {
+                    html += `<div class="badge bg-warning w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 12, '${mixtaAssign.instructor}', '${mixtaAssign.subject}', ${mixtaAssign.program_id || 0})">X: ${mixtaAssign.subject}</div>`;
+                } else if (!isInstructorView) {
+                    html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${dayNum}, '${dayName}', 12)">X: Sin asignar</div>`;
+                }
+                
+                if (nocturnaAssign) {
+                    html += `<div class="badge bg-dark w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 18, '${nocturnaAssign.instructor}', '${nocturnaAssign.subject}', ${nocturnaAssign.program_id || 0})">N: ${nocturnaAssign.subject}</div>`;
+                } else if (!isInstructorView) {
+                    html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${dayNum}, '${dayName}', 18)">N: Sin asignar</div>`;
+                }
+                
+                html += '</td>';
+            } else {
+                html += '<td class="p-1 bg-light"></td>';
+            }
+        }
+        html += '</tr>';
+    } else {
+        // Vista mensual
+        for (let w = 0; w < weeksCount; w++) {
+            html += '<tr>';
+            
+            for (let d = 0; d < 7; d++) {
+                const cellIndex = w * 7 + d;
+                
+                if (cellIndex < startDayOfWeek || day > daysInMonth) {
+                    html += '<td class="p-1"></td>';
+                } else {
+                    const dayName = daysNames[d];
+                    const dayNum = day;
+                    
+                    // Verificar si tiene asignaciones
+                    const mananaKey = `${day}-7`;
+                    const mixtaKey = `${day}-12`;
+                    const nocturnaKey = `${day}-18`;
+                    
+                    const mananaAssign = currentAssignments[mananaKey];
+                    const mixtaAssign = currentAssignments[mixtaKey];
+                    const nocturnaAssign = currentAssignments[nocturnaKey];
+                    
+                    html += `<td class="p-1" style="width: 14.285%; height: 120px; vertical-align: top;">`;
+                    html += `<div class="text-center fw-bold small">${day}</div>`;
+                    
+                    // Mostrar jornadas
+                    if (mananaAssign) {
+                        html += `<div class="badge bg-primary w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 7, '${mananaAssign.instructor}', '${mananaAssign.subject}', ${mananaAssign.program_id || 0})">M: ${mananaAssign.subject}</div>`;
+                    } else if (!isInstructorView) {
+                        html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${day}, '${dayName}', 7)">M</div>`;
+                    }
+                    
+                    if (mixtaAssign) {
+                        html += `<div class="badge bg-warning w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 12, '${mixtaAssign.instructor}', '${mixtaAssign.subject}', ${mixtaAssign.program_id || 0})">X: ${mixtaAssign.subject}</div>`;
+                    } else if (!isInstructorView) {
+                        html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${day}, '${dayName}', 12)">X</div>`;
+                    }
+                    
+                    if (nocturnaAssign) {
+                        html += `<div class="badge bg-dark w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 18, '${nocturnaAssign.instructor}', '${nocturnaAssign.subject}', ${nocturnaAssign.program_id || 0})">N: ${nocturnaAssign.subject}</div>`;
+                    } else if (!isInstructorView) {
+                        html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${day}, '${dayName}', 18)">N</div>`;
+                    }
+                    
+                    html += '</td>';
+                    day++;
+                }
+            }
+            
+            html += '</tr>';
+        }
+    }
+    
+    document.getElementById('calendar-body').innerHTML = html;
+}
+
+function openAssignmentModal(day, dayName, jornada, instructor = '', materia = '', programId = '') {
+    // Gestores solo pueden ver, no modificar
+    if (isGestor) {
+        alert('Los gestores tienen permiso de solo lectura. No puedes modificar asignaciones.');
+        return;
+    }
+    
+    selectedDayInfo = { day, dayName, jornada };
+
+    // Reiniciar filtros del modal
+    const modalFichaSearch = document.getElementById('modal-search-ficha');
+    const modalInstructorSearch = document.getElementById('modal-search-instructor');
+    if (modalFichaSearch) {
+        modalFichaSearch.value = '';
+        filterModalFichas();
+    }
+    if (modalInstructorSearch) {
+        modalInstructorSearch.value = '';
+        filterModalInstructors();
+    }
+    
+    const jornadaNames = {7: 'Mañana', 12: 'Mixta', 18: 'Nocturna'};
+    document.getElementById('selectedDate').textContent = `${dayName} ${day} - ${jornadaNames[jornada]}`;
+
+    if (currentUserRol === 'instructor') {
+        instructor = currentUserName;
+    }
+    
+    document.getElementById('modal-jornada').value = jornada;
+    document.getElementById('modal-instructor').value = instructor;
+    document.getElementById('modal-materia').value = materia;
+    document.getElementById('modal-ficha').value = programId;
+    // Gestores no pueden guardar asignaciones
+    if (isGestor) {
+        alert('Los gestores no pueden guardar asignaciones.');
+        return;
+    }
+    
+    
+    const modal = new bootstrap.Modal(document.getElementById('assignmentModal'));
+    modal.show();
+}
+
+function saveAssignment() {
+    if (!selectedDayInfo) return;
+    
+    const programId = document.getElementById('modal-ficha').value;
+    const instructor = currentUserRol === 'instructor'
+        ? currentUserName
+        : document.getElementById('modal-instructor').value;
+    const materia = document.getElementById('modal-materia').value;
+    const jornada = parseInt(document.getElementById('modal-jornada').value);
+    
+    if (!programId || !instructor || !materia) {
+        alert('Por favor complete todos los campos');
+        return;
+    }
+    
+    fetch('/save_assignment', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            program_id: parseInt(programId),
+            instructor: instructor,
+            subject: materia,
+            day: selectedDayInfo.dayName,
+            day_number: selectedDayInfo.day,
+            month: currentMonth,
+            year: currentYear,
+            hour: jornada
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
+            loadCalendar();
+            loadAssignmentsPanel();
+        } else {
+            alert('Error al guardar: ' + (data.error || 'Desconocido'));
+        }
+    })
+    .catch(error => {
+    // Gestores no pueden eliminar asignaciones
+    if (isGestor) {
+        alert('Los gestores no pueden eliminar asignaciones.');
+        return;
+    }
+    
+        console.error('Error:', error);
+        alert('Error de conexión');
+    });
+}
+
+function deleteAssignment() {
+    if (!selectedDayInfo) return;
+    
+    const programId = document.getElementById('modal-ficha').value;
+    const jornada = parseInt(document.getElementById('modal-jornada').value);
+    
+    if (!programId) {
+        alert('Por favor seleccione una ficha');
+        return;
+    }
+    
+    if (!confirm('¿Está seguro de eliminar esta asignación?')) {
+        return;
+    }
+    
+    fetch('/remove_calendar_assignment', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            program_id: parseInt(programId),
+            day_number: selectedDayInfo.day,
+            month: currentMonth,
+            year: currentYear,
+            hour: jornada
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
+            loadCalendar();
+            loadAssignmentsPanel();
+        } else {
+            alert('Error al eliminar: ' + (data.error || 'Desconocido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error de conexión');
+    });
+}
+
+// Funciones para Competencias y Resultados
+let currentCompetencyAssignments = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Ya se cargó el calendario arriba
+    loadCompetenciesByWeek();
+});
+
+function loadCompetenciesByWeek() {
+    const week = parseInt(document.getElementById('competency-week-select').value);
+    const container = document.getElementById('competencies-container');
+    
+    container.innerHTML = '<p class="text-muted">Cargando...</p>';
+    
+    // Obtener el mes y año actuales del calendario
+    const month = currentMonth;
+    const year = currentYear;
+    
+    fetch(`/get_assignments_by_week?month=${month}&year=${year}&week=${week}`)
+        .then(response => response.json())
+        .then(data => {
+            currentCompetencyAssignments = data.assignments || {};
+            renderCompetenciesContainer(data);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            container.innerHTML = '<p class="text-danger">Error al cargar los datos</p>';
+        });
+}
+
+function renderCompetenciesContainer(data) {
+    const container = document.getElementById('competencies-container');
+    const assignments = data.assignments || {};
+    const programName = data.program_name || '';
+    
+    // Recopilar todos los docentes únicos con sus asignaturas
+    const instructorSubjects = {};
+    
+    for (const [key, assign] of Object.entries(assignments)) {
+        if (assign && assign.instructor) {
+            const keyInfo = assign.instructor + '|' + (assign.subject || 'Sin materia');
+            if (!instructorSubjects[keyInfo]) {
+                instructorSubjects[keyInfo] = {
+                    instructor: assign.instructor,
+                    subject: assign.subject || 'Sin materia',
+                    program_id: assign.program_id,
+                    ficha: assign.ficha || '',
+                    competencia: assign.competencia || '',
+                    resultado: assign.resultado || '',
+                    assignment_id: assign.id,
+                    jornada: assign.hour || 7  // Agregar la jornada (hour)
+                };
+            }
+        }
+    }
+    
+    const subjectsArray = Object.values(instructorSubjects);
+    
+    if (subjectsArray.length === 0) {
+        // Mostrar mensaje personalizado según el tipo de usuario
+        let mensaje = '';
+        if (currentUserRol === 'super admin' || currentUserRol === 'administrador') {
+            mensaje = 'No hay docentes asignados para esta semana. Seleccione una semana que tenga asignaciones en el calendario.';
+        } else if (currentUserAsignatura) {
+            mensaje = `No tienes asignaciones programadas para esta semana en tu asignatura (${currentUserAsignatura}).`;
+        } else {
+            mensaje = 'No tienes una asignatura asignada. Contacta al administrador para que te asigne una materia.';
+        }
+        
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> ${mensaje}
+            </div>`;
+        return;
+    }
+    
+    let html = `<div class="row">`;
+    
+    for (const item of subjectsArray) {
+        const hasCompetency = item.competencia && item.competencia.trim() !== '';
+        const hasResultado = item.resultado && item.resultado.trim() !== '';
+        const isComplete = hasCompetency && hasResultado;
+        
+        // Determinar el color según la jornada
+        const jornada = item.jornada || 7;
+        const jornadaClass = jornada === 7 ? 'bg-primary' : (jornada === 12 ? 'bg-warning text-dark' : 'bg-dark');
+        const borderClass = jornada === 7 ? 'border-primary' : (jornada === 12 ? 'border-warning' : 'border-dark');
+        
+        html += `
+            <div class="col-md-6 mb-3">
+                <div class="card ${borderClass}">
+                    <div class="card-header ${jornadaClass} text-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong>${item.instructor}</strong>
+                            <span class="badge bg-light text-dark">${item.ficha}</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-1"><strong>Materia:</strong> <span class="text-primary">${item.subject}</span></p>
+                        
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Competencia:</label>
+                            ${item.competencia ? 
+                                `<p class="small mb-1">${item.competencia}</p>` : 
+                                `<p class="text-muted small fst-italic">Sin competencia asignada</p>`}
+                        </div>
+                        
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Resultado de Aprendizaje:</label>
+                            ${item.resultado ? 
+                                `<p class="small mb-1">${item.resultado}</p>` : 
+                                `<p class="text-muted small fst-italic">Sin resultado asignado</p>`}
+                        </div>
+                        
+                        <button class="btn btn-sm ${isComplete ? 'btn-outline-success' : 'btn-warning'}" 
+                                onclick="openCompetencyModal('${item.instructor}', '${item.subject}', '${item.ficha}', ${item.program_id}, ${item.assignment_id}, '${item.competencia || ''}', '${item.resultado || ''}')">
+                            <i class="bi bi-${isComplete ? 'pencil' : 'plus-circle'}"></i> 
+                            ${isComplete ? 'Editar' : 'Agregar'} Competencia
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+    }
+    
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function openCompetencyModal(instructor, subject, ficha, programId, assignmentId, competencia, resultado) {
+    // Gestores no pueden guardar competencias
+    if (isGestor) {
+        alert('Los gestores no pueden guardar competencias.');
+        return;
+    }
+    
+    document.getElementById('comp-instructor-name').textContent = instructor;
+    document.getElementById('comp-subject').textContent = subject;
+    document.getElementById('comp-ficha').textContent = ficha;
+    document.getElementById('comp-assignment-id').value = assignmentId;
+    document.getElementById('comp-competencia').value = competencia || '';
+    document.getElementById('comp-resultado').value = resultado || '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('competencyModal'));
+    modal.show();
+}
+
+function saveCompetency() {
+    const assignmentId = document.getElementById('comp-assignment-id').value;
+    const competencia = document.getElementById('comp-competencia').value.trim();
+    const resultado = document.getElementById('comp-resultado').value.trim();
+    
+    if (!assignmentId) {
+        alert('Error: No se encontró la asignación');
+        return;
+    }
+    
+    if (!competencia) {
+        alert('Por favor ingrese la competencia');
+        return;
+    }
+    
+    fetch('/update_assignment_competency', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            assignment_id: parseInt(assignmentId),
+            competencia: competencia,
+            resultado: resultado
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('competencyModal')).hide();
+            loadCompetenciesByWeek();
+            loadCalendar();
+        } else {
+            alert('Error al guardar: ' + (data.error || 'Desconocido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error de conexión');
+    });
+}
+
+// Variables para el modal de semana completa
+let weeklySubjectsData = {};
+let weeklyWeeksData = [];
+
+function openWeeklyCompetencyModal() {
+    // Gestores solo pueden ver, no modificar
+    if (isGestor) {
+        alert('Los gestores tienen permiso de solo lectura. No puedes asignar competencias a semanas.');
+        return;
+    }
+    
+    const week = parseInt(document.getElementById('competency-week-select').value);
+    const month = currentMonth;
+    const year = currentYear;
+    
+    // Cargar las semanas del mes
+    fetch(`/get_month_weeks?month=${month}&year=${year}`)
+        .then(response => response.json())
+        .then(data => {
+            weeklyWeeksData = data.weeks || [];
+            const weekSelect = document.getElementById('weekly-week-select');
+            weekSelect.innerHTML = '<option value="">-- Seleccionar Semana --</option>';
+            
+            weeklyWeeksData.forEach((w, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = w.label;
+                weekSelect.appendChild(option);
+            });
+            
+            // Seleccionar la semana actual del calendario por defecto
+            if (week < weeklyWeeksData.length) {
+                weekSelect.value = week;
+                updateWeekDatesDisplay();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+    
+    // Cargar las materias disponibles para la semana actual
+    loadWeeklySubjects();
+    
+    // Limpiar campos
+    document.getElementById('weekly-instructor').value = '';
+    document.getElementById('weekly-subject').innerHTML = '<option value="">-- Seleccionar Materia --</option>';
+    document.getElementById('weekly-program').value = '';
+    document.getElementById('weekly-competencia').value = '';
+    document.getElementById('weekly-resultado').value = '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('weeklyCompetencyModal'));
+    modal.show();
+}
+
+function updateWeekDatesDisplay() {
+    const weekIndex = document.getElementById('weekly-week-select').value;
+    const weekDisplay = document.getElementById('week-dates-display');
+    
+    if (weekIndex !== '' && weeklyWeeksData[weekIndex]) {
+        const week = weeklyWeeksData[weekIndex];
+        const daysText = week.days.map(d => `${d.day} ${d.day_number}`).join(', ');
+        weekDisplay.innerHTML = `<strong>${daysText}</strong>`;
+    } else {
+        weekDisplay.innerHTML = '<small>Seleccione una semana para ver las fechas</small>';
+    }
+}
+
+function loadWeeklySubjects() {
+    const week = parseInt(document.getElementById('competency-week-select').value);
+    const month = currentMonth;
+    const year = currentYear;
+    
+    fetch(`/get_assignments_by_week?month=${month}&year=${year}&week=${week}`)
+        .then(response => response.json())
+        .then(data => {
+            const assignments = data.assignments || {};
+            weeklySubjectsData = {};
+            
+            // Recopilar docentes y materias únicos
+            for (const [key, assign] of Object.entries(assignments)) {
+                if (assign && assign.instructor) {
+                    if (!weeklySubjectsData[assign.instructor]) {
+                        weeklySubjectsData[assign.instructor] = {
+                            subjects: new Set(),
+                            program_id: assign.program_id,
+                            ficha: assign.ficha
+                        };
+                    }
+                    weeklySubjectsData[assign.instructor].subjects.add(assign.subject);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+function updateWeeklySubjectOptions() {
+    const instructor = document.getElementById('weekly-instructor').value;
+    const subjectSelect = document.getElementById('weekly-subject');
+    const programSelect = document.getElementById('weekly-program');
+    
+    subjectSelect.innerHTML = '<option value="">-- Seleccionar Materia --</option>';
+    
+    if (instructor && weeklySubjectsData[instructor]) {
+        const data = weeklySubjectsData[instructor];
+        data.subjects.forEach(subject => {
+            const option = document.createElement('option');
+            option.value = subject;
+            option.textContent = subject;
+            subjectSelect.appendChild(option);
+        });
+        
+        // Seleccionar automáticamente el programa
+        if (data.program_id) {
+            programSelect.value = data.program_id;
+        }
+    }
+}
+
+function saveWeeklyCompetency() {
+    // Gestores no pueden guardar competencias semanales
+    if (isGestor) {
+        alert('Los gestores no pueden guardar competencias.');
+        return;
+    }
+    
+    const programId = document.getElementById('weekly-program').value;
+    const instructor = document.getElementById('weekly-instructor').value;
+    const subject = document.getElementById('weekly-subject').value;
+    const competencia = document.getElementById('weekly-competencia').value.trim();
+    const resultado = document.getElementById('weekly-resultado').value.trim();
+    const weekIndex = document.getElementById('weekly-week-select').value;
+    const month = currentMonth;
+    const year = currentYear;
+    
+    // Validaciones
+    if (!programId || !instructor || !subject || !competencia) {
+        alert('Por favor complete todos los campos obligatorios (Semana, Docente, Materia, Programa y Competencia)');
+        return;
+    }
+    
+    if (weekIndex === '') {
+        alert('Por favor seleccione una semana');
+        return;
+    }
+    
+    const week = weeklyWeeksData[weekIndex];
+    const weekStart = week.start;
+    const weekEnd = week.end;
+    
+    fetch('/save_weekly_competency', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            program_id: parseInt(programId),
+            instructor: instructor,
+            subject: subject,
+            competencia: competencia,
+            resultado: resultado,
+            week_start: weekStart,
+            week_end: weekEnd,
+            month: month,
+            year: year
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Competencia guardada exitosamente para ${data.updated_count} asignaciones`);
+            bootstrap.Modal.getInstance(document.getElementById('weeklyCompetencyModal')).hide();
+            loadCompetenciesByWeek();
+            loadCalendar();
+        } else {
+            alert('Error al guardar: ' + (data.error || 'Desconocido'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error de conexión');
+    });
+}
+</script>
+{% endblock %}

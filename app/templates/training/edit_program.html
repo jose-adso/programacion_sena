@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Programa de Formación{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h4>Editar Programa de Formación</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('training.edit_program', program_id=program.id) }}" class="needs-validation" novalidate>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="ficha_number" class="form-label">Número de Ficha *</label>
+                            <input type="text" class="form-control" id="ficha_number" name="ficha_number" value="{{ program.ficha_number }}" required>
+                            <div class="invalid-feedback">
+                                Por favor ingrese el número de ficha
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="program_name" class="form-label">Nombre del Programa *</label>
+                            <input type="text" class="form-control" id="program_name" name="program_name" value="{{ program.program_name }}" required>
+                            <div class="invalid-feedback">
+                                Por favor ingrese el nombre del programa
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="classroom" class="form-label">Aula</label>
+                            <input type="text" class="form-control" id="classroom" name="classroom" value="{{ program.classroom or '' }}">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="location_municipality" class="form-label">Lugar o Municipio *</label>
+                            <input type="text" class="form-control" id="location_municipality" name="location_municipality" value="{{ program.location_municipality or '' }}" required>
+                            <div class="invalid-feedback">
+                                Por favor ingrese el lugar o municipio
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="start_date" class="form-label">Fecha de Inicio *</label>
+                            <input type="date" class="form-control" id="start_date" name="start_date" value="{{ program.start_date.strftime('%Y-%m-%d') if program.start_date else '' }}" required>
+                            <div class="invalid-feedback">
+                                Por favor seleccione la fecha de inicio
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="end_date" class="form-label">Fecha de Término *</label>
+                            <input type="date" class="form-control" id="end_date" name="end_date" value="{{ program.end_date.strftime('%Y-%m-%d') if program.end_date else '' }}" required>
+                            <div class="invalid-feedback">
+                                Por favor seleccione la fecha de término
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">Actualizar Programa</button>
+                        <a href="{{ url_for('training.programs') }}" class="btn btn-secondary">Cancelar</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

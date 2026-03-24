@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Registrar Usuario{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1>Registrar Nuevo Usuario</h1>
+    <p>{% if current_user.rol_activo == 'super admin' %}Puedes registrar usuarios con rol de Super Admin, Administrador, Gestor o Docente{% elif current_user.rol_activo == 'administrador' %}Puedes registrar usuarios con rol de Administrador, Gestor o Docente{% endif %}</p>
+    <p class="text-muted">Al registrar un usuario se enviará un enlace de activación al correo para definir la contraseña inicial.</p>
+    
+    <div class="mb-4">
+        <a href="{{ url_for('admin.panel') }}" class="btn btn-secondary">Volver al Panel</a>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-danger">Cerrar Sesión</a>
+    </div>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <form method="POST" action="{{ url_for('admin.registrar') }}" class="row g-3 needs-validation" novalidate>
+        <div class="col-md-6">
+            <label for="nombre" class="form-label">Nombre de Usuario</label>
+            <input type="text" class="form-control" id="nombre" name="nombre" required>
+            <div class="invalid-feedback">
+                Por favor ingrese un nombre de usuario
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <label for="correo" class="form-label">Correo Electrónico</label>
+            <input type="email" class="form-control" id="correo" name="correo" required>
+            <div class="invalid-feedback">
+                Por favor ingrese un correo válido
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <label for="rol" class="form-label">Rol</label>
+            <select class="form-select" id="rol" name="rol" required>
+                <option value="">Seleccione un rol</option>
+                {% if current_user.rol_activo == 'super admin' %}
+                <option value="super admin">Super Admin</option>
+                <option value="administrador">Administrador</option>
+                <option value="gestor">Gestor</option>
+                <option value="instructor">Instructor</option>
+                {% elif current_user.rol_activo == 'administrador' %}
+                <option value="administrador">Administrador</option>
+                <option value="gestor">Gestor</option>
+                <option value="instructor">Instructor</option>
+                {% endif %}
+            </select>
+            <div class="invalid-feedback">
+                Por favor seleccione un rol
+            </div>
+        </div>
+
+        <div class="col-md-12">
+            <label for="perfil_profesional" class="form-label">Perfil Profesional</label>
+            <textarea class="form-control" id="perfil_profesional" name="perfil_profesional" rows="3" placeholder="Ej: Ingeniero de sistemas con experiencia en formación técnica"></textarea>
+        </div>
+        
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">Registrar Usuario</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

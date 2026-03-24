@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: programacion
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: MB35mESjUg7B@
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  web:
+    build: .
+    container_name: flask_app
+    ports:
+      - "8010:8010"
+    environment:
+      DATABASE_URL: postgresql://postgres:MB35mESjUg7B%40@vwcwc0w4ssskwc8owgo40kc4:5432/postgres
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
