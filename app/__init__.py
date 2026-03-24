@@ -22,6 +22,7 @@ def create_app():
     )
     app.config["APP_BASE_URL"] = os.getenv("APP_BASE_URL", "")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["PERMANENT_SESSION_LIFETIME"] = 300  # 5 minutos en segundos
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
         "pool_pre_ping": True,
         "pool_recycle": 300,
