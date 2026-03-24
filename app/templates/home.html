@@ -184,7 +184,7 @@
                     <p>Usuario: <strong>{{ username }}</strong></p>
                     <p>Rol: <strong>{{ current_user.rol }}</strong></p>
                     <p>Perfil profesional: <strong>{{ current_user.perfil_profesional or 'No registrado' }}</strong></p>
-                    {% if current_user.rol_activo == 'instructor' %}
+                    {% if current_user.rol_activo in ['instructor', 'gestor'] %}
                     {% if not current_user.perfil_profesional %}
                     <div class="mt-3">
                         <label for="perfil-profesional-input" class="form-label">Actualizar perfil profesional</label>
@@ -822,12 +822,6 @@ function generateCalendar() {
 }
 
 function openAssignmentModal(day, dayName, jornada, instructor = '', materia = '', programId = '') {
-    // Gestores solo pueden ver, no modificar
-    if (isGestor) {
-        alert('Los gestores tienen permiso de solo lectura. No puedes modificar asignaciones.');
-        return;
-    }
-    
     selectedDayInfo = { day, dayName, jornada };
 
     // Reiniciar filtros del modal
@@ -853,12 +847,6 @@ function openAssignmentModal(day, dayName, jornada, instructor = '', materia = '
     document.getElementById('modal-instructor').value = instructor;
     document.getElementById('modal-materia').value = materia;
     document.getElementById('modal-ficha').value = programId;
-    // Gestores no pueden guardar asignaciones
-    if (isGestor) {
-        alert('Los gestores no pueden guardar asignaciones.');
-        return;
-    }
-    
     
     const modal = new bootstrap.Modal(document.getElementById('assignmentModal'));
     modal.show();
@@ -1086,12 +1074,6 @@ function renderCompetenciesContainer(data) {
 }
 
 function openCompetencyModal(instructor, subject, ficha, programId, assignmentId, competencia, resultado) {
-    // Gestores no pueden guardar competencias
-    if (isGestor) {
-        alert('Los gestores no pueden guardar competencias.');
-        return;
-    }
-    
     document.getElementById('comp-instructor-name').textContent = instructor;
     document.getElementById('comp-subject').textContent = subject;
     document.getElementById('comp-ficha').textContent = ficha;

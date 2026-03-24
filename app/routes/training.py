@@ -20,8 +20,8 @@ def programs():
 @training_bp.route("/programs/add", methods=["GET", "POST"])
 @login_required
 def add_program():
-    # Only super admin can add training programs
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+    # Super admin, administrador y gestor pueden ver la pantalla.
+    if current_user.rol_activo not in ["super admin", "administrador", "gestor"]:
         flash("No tienes permiso para agregar programas de formación", "danger")
         return redirect(url_for("main.home"))
     
@@ -75,13 +75,13 @@ def add_program():
             flash("Error al agregar el programa de formación", "danger")
             return redirect(url_for("training.add_program"))
     
-    return render_template("training/add_program.html")
+    return render_template("training/add_program.html", read_only=(current_user.rol_activo == "gestor"))
 
 @training_bp.route("/programs/edit/<int:program_id>", methods=["GET", "POST"])
 @login_required
 def edit_program(program_id):
-    # Only super admin can edit training programs
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+    # Super admin, administrador y gestor pueden ver la pantalla.
+    if current_user.rol_activo not in ["super admin", "administrador", "gestor"]:
         flash("No tienes permiso para editar programas de formación", "danger")
         return redirect(url_for("main.home"))
     
@@ -136,7 +136,7 @@ def edit_program(program_id):
             return redirect(url_for("training.edit_program", program_id=program_id))
     
     # Para GET request, mostrar el formulario con los datos actuales
-    return render_template("training/edit_program.html", program=program)
+    return render_template("training/edit_program.html", program=program, read_only=(current_user.rol_activo == "gestor"))
 
 @training_bp.route("/programs/delete/<int:program_id>", methods=["POST"])
 @login_required

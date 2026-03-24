@@ -5,13 +5,13 @@
 {% block content %}
 <div class="container mt-5">
     <h1>Panel de Administrador</h1>
-    <p>Bienvenido, {{ current_user.nombre }} ({{ current_user.rol }})</p>
+    <p>Bienvenido, {{ current_user.nombre }} (Base: {{ current_user.rol }} | Activo: {{ current_user.rol_activo }})</p>
     
     <div class="mb-4">
-        {% if current_user.rol_activo != 'gestor' %}
+        {% if can_manage_users %}
         <a href="{{ url_for('admin.registrar') }}" class="btn btn-primary">Registrar Nuevo Usuario</a>
         {% else %}
-        <button class="btn btn-primary" disabled title="Los gestores tienen permiso de solo lectura">Registrar Nuevo Usuario (Solo lectura)</button>
+        <button class="btn btn-primary" disabled title="Tu rol activo no permite registrar usuarios">Registrar Nuevo Usuario (No disponible)</button>
         {% endif %}
         {% if current_user.rol_activo == 'super admin' %}
         <form action="{{ url_for('admin.enviar_links_instructores') }}" method="POST" style="display:inline;" onsubmit="return confirm('¿Enviar enlace de asignación de contraseña a todos los instructores?');">
@@ -44,7 +44,7 @@
         </thead>
         <tbody>
             {% for user in users %}
-            {% if user.rol != 'super admin' or current_user.rol_activo == 'super admin' %}
+            {% if user.rol != 'super admin' or is_base_super_admin %}
             <tr>
                 <td>{{ user.id }}</td>
                 <td>{{ user.nombre }}</td>
@@ -65,7 +65,7 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if current_user.rol_activo != 'gestor' %}
+                    {% if can_manage_users %}
                     {% if user.rol != current_user.rol_activo or user.id != current_user.id %}
                     <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}')">
                         Cambiar Rol
@@ -74,6 +74,10 @@
                         <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
                     </form>
                     {% endif %}
+                    {% elif is_base_super_admin and user.id == current_user.id %}
+                    <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}')">
+                        Cambiar Mi Rol
+                    </button>
                     {% else %}
                     <span class="text-muted small">Solo lectura</span>
                     {% endif %}
@@ -102,7 +106,7 @@
                     <select id="nuevo-rol" class="form-select">
                         <option value="gestor">Gestor</option>
                         <option value="instructor">Instructor</option>
-                        {% if current_user.rol_activo == 'super admin' %}
+                        {% if is_base_super_admin %}
                         <option value="administrador">Administrador</option>
                         <option value="super admin">Super Admin</option>
                         {% else %}

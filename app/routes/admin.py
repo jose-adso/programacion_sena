@@ -83,13 +83,28 @@ admin_bp = Blueprint("admin", __name__)
 @admin_bp.route("/panel")
 @login_required
 def panel():
-    # Super admin, administrador y gestor pueden ver el panel.
-    if current_user.rol_activo not in ["super admin", "administrador", "gestor"]:
+    is_base_super_admin = current_user.rol == "super admin"
+    can_open_panel = current_user.rol_activo in ["super admin", "administrador", "gestor"] or is_base_super_admin
+
+    # Super admin base puede entrar al panel para recuperar/cambiar su rol activo.
+    if not can_open_panel:
         flash("No tienes permiso para acceder al panel de administrador", "danger")
         return redirect(url_for("main.home"))
-    
-    users = Users.query.all()
-    return render_template("admin/panel.html", users=users)
+
+    can_manage_users = current_user.rol_activo in ["super admin", "administrador"]
+
+    # Si el super admin está actuando como otro rol, solo puede verse a sí mismo para cambiar de rol.
+    if can_manage_users or current_user.rol_activo == "gestor":
+        users = Users.query.all()
+    else:
+        users = [current_user]
+
+    return render_template(
+        "admin/panel.html",
+        users=users,
+        can_manage_users=can_manage_users,
+        is_base_super_admin=is_base_super_admin,
+    )
 
 
 @admin_bp.route("/enviar-links-instructores", methods=["POST"])
@@ -135,13 +150,16 @@ def enviar_links_instructores():
 @login_required
 def cambiar_rol(user_id):
     """Cambiar el rol de un usuario temporalmente"""
-    # Solo super admin y administrador pueden cambiar roles
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+    is_base_super_admin = current_user.rol == "super admin"
+    is_active_admin = current_user.rol_activo in ["super admin", "administrador"]
+
+    # Super admin base puede cambiar su propio rol aunque su rol activo sea otro.
+    if not is_active_admin and not is_base_super_admin:
         return jsonify({"success": False, "error": "No tienes permiso"}), 403
-    
-    # Gestores solo pueden ver, no modificar
-    if current_user.rol_activo == "gestor":
-        return jsonify({"success": False, "error": "No tienes permiso"}), 403
+
+    # Si super admin base está actuando como rol no administrativo, solo puede cambiarse a sí mismo.
+    if is_base_super_admin and not is_active_admin and user_id != current_user.id:
+        return jsonify({"success": False, "error": "Con tu rol activo actual solo puedes cambiar tu propio rol"}), 403
     
     data = request.get_json()
     nuevo_rol = data.get('rol')
@@ -157,7 +175,7 @@ def cambiar_rol(user_id):
         return jsonify({"success": False, "error": "Rol no válido"}), 400
     
     # Si es permanente o si el usuario actual no es super admin, no permitir crear super admin
-    if nuevo_rol == "super admin" and current_user.rol_activo != "super admin":
+    if nuevo_rol == "super admin" and not is_base_super_admin:
         return jsonify({"success": False, "error": "No tienes permiso para asignar rol de super admin"}), 403
     
     hoy = datetime.now().date()
@@ -194,8 +212,8 @@ def cambiar_rol(user_id):
 @admin_bp.route("/registrar", methods=["GET", "POST"])
 @login_required
 def registrar():
-    # Only super admin and administrador can register new users
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+    # Super admin, administrador y gestor pueden ver la pantalla.
+    if current_user.rol_activo not in ["super admin", "administrador", "gestor"]:
         flash("No tienes permiso para registrar usuarios", "danger")
         return redirect(url_for("main.home"))
     
@@ -271,7 +289,7 @@ def registrar():
             flash("Error al registrar el usuario", "danger")
             return redirect(url_for("admin.registrar"))
     
-    return render_template("admin/registrar.html")
+    return render_template("admin/registrar.html", read_only=(current_user.rol_activo == "gestor"))
 
 @admin_bp.route("/eliminar/<int:user_id>", methods=["POST"])
 @login_required

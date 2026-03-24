@@ -5,7 +5,15 @@
 {% block content %}
 <div class="container mt-5">
     <h1>Registrar Nuevo Usuario</h1>
-    <p>{% if current_user.rol_activo == 'super admin' %}Puedes registrar usuarios con rol de Super Admin, Administrador, Gestor o Docente{% elif current_user.rol_activo == 'administrador' %}Puedes registrar usuarios con rol de Administrador, Gestor o Docente{% endif %}</p>
+    <p>
+        {% if current_user.rol_activo == 'super admin' %}
+        Puedes registrar usuarios con rol de Super Admin, Administrador, Gestor o Docente
+        {% elif current_user.rol_activo == 'administrador' %}
+        Puedes registrar usuarios con rol de Administrador, Gestor o Docente
+        {% elif current_user.rol_activo == 'gestor' %}
+        Vista de solo lectura: puedes ver el formulario, pero no registrar usuarios.
+        {% endif %}
+    </p>
     <p class="text-muted">Al registrar un usuario se enviará un enlace de activación al correo para definir la contraseña inicial.</p>
     
     <div class="mb-4">
@@ -24,7 +32,7 @@
     <form method="POST" action="{{ url_for('admin.registrar') }}" class="row g-3 needs-validation" novalidate>
         <div class="col-md-6">
             <label for="nombre" class="form-label">Nombre de Usuario</label>
-            <input type="text" class="form-control" id="nombre" name="nombre" required>
+            <input type="text" class="form-control" id="nombre" name="nombre" required {% if read_only %}disabled{% endif %}>
             <div class="invalid-feedback">
                 Por favor ingrese un nombre de usuario
             </div>
@@ -32,7 +40,7 @@
         
         <div class="col-md-6">
             <label for="correo" class="form-label">Correo Electrónico</label>
-            <input type="email" class="form-control" id="correo" name="correo" required>
+            <input type="email" class="form-control" id="correo" name="correo" required {% if read_only %}disabled{% endif %}>
             <div class="invalid-feedback">
                 Por favor ingrese un correo válido
             </div>
@@ -40,7 +48,7 @@
         
         <div class="col-md-6">
             <label for="rol" class="form-label">Rol</label>
-            <select class="form-select" id="rol" name="rol" required>
+            <select class="form-select" id="rol" name="rol" required {% if read_only %}disabled{% endif %}>
                 <option value="">Seleccione un rol</option>
                 {% if current_user.rol_activo == 'super admin' %}
                 <option value="super admin">Super Admin</option>
@@ -60,11 +68,15 @@
 
         <div class="col-md-12">
             <label for="perfil_profesional" class="form-label">Perfil Profesional</label>
-            <textarea class="form-control" id="perfil_profesional" name="perfil_profesional" rows="3" placeholder="Ej: Ingeniero de sistemas con experiencia en formación técnica"></textarea>
+            <textarea class="form-control" id="perfil_profesional" name="perfil_profesional" rows="3" placeholder="Ej: Ingeniero de sistemas con experiencia en formación técnica" {% if read_only %}disabled{% endif %}></textarea>
         </div>
         
         <div class="col-12">
+            {% if read_only %}
+            <button type="button" class="btn btn-secondary" disabled>Registrar Usuario (Solo lectura)</button>
+            {% else %}
             <button type="submit" class="btn btn-primary">Registrar Usuario</button>
+            {% endif %}
         </div>
     </form>
 </div>

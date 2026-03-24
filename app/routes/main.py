@@ -60,9 +60,9 @@ def update_user_asignatura():
 @main_bp.route("/update_my_professional_profile", methods=["POST"])
 @login_required
 def update_my_professional_profile():
-    """Permite al instructor actualizar su propio perfil profesional."""
-    if current_user.rol_activo != "instructor":
-        return jsonify({"success": False, "error": "Solo los instructores pueden modificar su perfil profesional"}), 403
+    """Permite al instructor o gestor actualizar su propio perfil profesional."""
+    if current_user.rol_activo not in ("instructor", "gestor"):
+        return jsonify({"success": False, "error": "No tienes permiso para modificar el perfil profesional"}), 403
 
     data = request.get_json() or {}
     profile = (data.get("perfil_profesional") or "").strip()

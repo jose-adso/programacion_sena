@@ -8,13 +8,16 @@
         <div class="card">
             <div class="card-header">
                 <h4>Agregar Nuevo Programa de Formación</h4>
+                {% if read_only %}
+                <small class="text-muted">Vista de solo lectura para gestor</small>
+                {% endif %}
             </div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('training.add_program') }}" class="needs-validation" novalidate>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label for="ficha_number" class="form-label">Número de Ficha *</label>
-                            <input type="text" class="form-control" id="ficha_number" name="ficha_number" required>
+                            <input type="text" class="form-control" id="ficha_number" name="ficha_number" required {% if read_only %}disabled{% endif %}>
                             <div class="invalid-feedback">
                                 Por favor ingrese el número de ficha
                             </div>
@@ -22,7 +25,7 @@
                         
                         <div class="col-md-6">
                             <label for="program_name" class="form-label">Nombre del Programa *</label>
-                            <input type="text" class="form-control" id="program_name" name="program_name" required>
+                            <input type="text" class="form-control" id="program_name" name="program_name" required {% if read_only %}disabled{% endif %}>
                             <div class="invalid-feedback">
                                 Por favor ingrese el nombre del programa
                             </div>
@@ -30,12 +33,12 @@
                         
                         <div class="col-md-6">
                             <label for="classroom" class="form-label">Aula</label>
-                            <input type="text" class="form-control" id="classroom" name="classroom">
+                            <input type="text" class="form-control" id="classroom" name="classroom" {% if read_only %}disabled{% endif %}>
                         </div>
                         
                         <div class="col-md-6">
                             <label for="location_municipality" class="form-label">Lugar o Municipio *</label>
-                            <input type="text" class="form-control" id="location_municipality" name="location_municipality" required>
+                            <input type="text" class="form-control" id="location_municipality" name="location_municipality" required {% if read_only %}disabled{% endif %}>
                             <div class="invalid-feedback">
                                 Por favor ingrese el lugar o municipio
                             </div>
@@ -43,7 +46,7 @@
                         
                         <div class="col-md-6">
                             <label for="start_date" class="form-label">Fecha de Inicio *</label>
-                            <input type="date" class="form-control" id="start_date" name="start_date" required>
+                            <input type="date" class="form-control" id="start_date" name="start_date" required {% if read_only %}disabled{% endif %}>
                             <div class="invalid-feedback">
                                 Por favor seleccione la fecha de inicio
                             </div>
@@ -51,7 +54,7 @@
                         
                         <div class="col-md-6">
                             <label for="end_date" class="form-label">Fecha de Término *</label>
-                            <input type="date" class="form-control" id="end_date" name="end_date" required>
+                            <input type="date" class="form-control" id="end_date" name="end_date" required {% if read_only %}disabled{% endif %}>
                             <div class="invalid-feedback">
                                 Por favor seleccione la fecha de término
                             </div>
@@ -59,7 +62,11 @@
                     </div>
                     
                     <div class="mt-4">
+                        {% if read_only %}
+                        <button type="button" class="btn btn-secondary" disabled>Guardar Programa (Solo lectura)</button>
+                        {% else %}
                         <button type="submit" class="btn btn-primary">Guardar Programa</button>
+                        {% endif %}
                         <a href="{{ url_for('training.programs') }}" class="btn btn-secondary">Cancelar</a>
                     </div>
                 </form>
