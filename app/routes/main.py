@@ -355,6 +355,8 @@ def get_current_assignments():
         program = TrainingProgram.query.get(assign.training_program_id)
         program_name = program.program_name if program else "Unknown"
         ficha_number = program.ficha_number if program else ""
+        classroom = (program.classroom or "") if program else ""
+        location_municipality = (program.location_municipality or "") if program else ""
         
         instructors_dict[instructor].append({
             'subject': assign.subject,
@@ -362,7 +364,9 @@ def get_current_assignments():
             'day_number': assign.day_number,
             'hour': assign.hour,
             'ficha': ficha_number,
-            'program': program_name
+            'program': program_name,
+            'classroom': classroom,
+            'location_municipality': location_municipality
         })
     
     return jsonify(instructors_dict)

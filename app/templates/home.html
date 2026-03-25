@@ -197,6 +197,17 @@
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Horas asignadas por instructor -->
+            <div class="card mb-3">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-clock-history"></i> Horas por Instructor</h5>
+                    <small id="horas-mes-label" class="text-white-50"></small>
+                </div>
+                <div class="card-body p-2" id="horas-container">
+                    <p class="text-muted small">Cargando...</p>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -426,6 +437,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('year-select').value = currentYear;
     loadCalendar();
     loadAssignmentsPanel();
+    loadHorasAsignadas();
 });
 
 function changeViewMode() {
@@ -444,6 +456,7 @@ function changeViewMode() {
 function applyFilters() {
     loadCalendar();
     loadAssignmentsPanel();
+    loadHorasAsignadas();
 }
 
 function saveMyProfessionalProfile() {
@@ -598,7 +611,9 @@ function loadAssignmentsPanel() {
                 return a.hour - b.hour;
             });
             
-            // Agrupar por semana y luego por instructor
+            // Agrupar por semana y luego por instructor.
+            // Dentro del instructor, separar también por jornada + ficha + programa + municipio
+            // para evitar mezclar días de fichas distintas en una sola línea.
             const weeks = {};
             const daysOrder = {'Domingo': 0, 'Lunes': 1, 'Martes': 2, 'Miércoles': 3, 'Jueves': 4, 'Viernes': 5, 'Sábado': 6};
             const daysShort = {'Domingo': 'Dom', 'Lunes': 'Lun', 'Martes': 'Mar', 'Miércoles': 'Mié', 'Jueves': 'Jue', 'Viernes': 'Vie', 'Sábado': 'Sáb'};
@@ -611,14 +626,25 @@ function loadAssignmentsPanel() {
                 }
                 const instructorKey = assign.instructor;
                 if (!weeks[weekKey][instructorKey]) {
-                    weeks[weekKey][instructorKey] = { jornadas: {} };
+                    weeks[weekKey][instructorKey] = { bloques: {} };
                 }
-                // Agrupar por jornada
-                const jornadaKey = assign.hour;
-                if (!weeks[weekKey][instructorKey].jornadas[jornadaKey]) {
-                    weeks[weekKey][instructorKey].jornadas[jornadaKey] = { subject: assign.subject, days: [], ficha: assign.ficha };
+                const jornadaKey = String(assign.hour);
+                const fichaKey = String(assign.ficha || '');
+                const programKey = String(assign.subject || '');
+                const municipioKey = String(assign.location_municipality || '');
+                const bloqueKey = `${jornadaKey}|${fichaKey}|${programKey}|${municipioKey}`;
+
+                if (!weeks[weekKey][instructorKey].bloques[bloqueKey]) {
+                    weeks[weekKey][instructorKey].bloques[bloqueKey] = {
+                        hour: assign.hour,
+                        subject: assign.subject,
+                        days: [],
+                        ficha: assign.ficha,
+                        classroom: assign.classroom || '',
+                        location_municipality: assign.location_municipality || ''
+                    };
                 }
-                weeks[weekKey][instructorKey].jornadas[jornadaKey].days.push(assign.day);
+                weeks[weekKey][instructorKey].bloques[bloqueKey].days.push(assign.day);
             }
             
             let html = '';
@@ -629,10 +655,16 @@ function loadAssignmentsPanel() {
                 html += `<ul class="list-group list-group-flush small">`;
                 
                 for (const [instructor, info] of Object.entries(instructors)) {
-                    // Ordenar jornadas
-                    const jornadas = Object.entries(info.jornadas).sort((a, b) => a[0] - b[0]);
+                    // Ordenar bloques por jornada y ficha
+                    const bloques = Object.entries(info.bloques).sort((a, b) => {
+                        const hourA = (a[1].hour || 0);
+                        const hourB = (b[1].hour || 0);
+                        if (hourA !== hourB) return hourA - hourB;
+                        return String(a[1].ficha || '').localeCompare(String(b[1].ficha || ''));
+                    });
                     
-                    for (const [jornada, data] of jornadas) {
+                    for (const [_, data] of bloques) {
+                        const jornada = String(data.hour || '');
                         const jornadaLabel = jornada === '7' ? 'M' : (jornada === '12' ? 'X' : 'N');
                         const jornadaClass = jornada === '7' ? 'bg-primary' : (jornada === '12' ? 'bg-warning text-dark' : 'bg-dark');
                         
@@ -642,7 +674,11 @@ function loadAssignmentsPanel() {
                         html += `<li class="list-group-item p-2" style="border-left: 3px solid var(--sena-green);">`;
                         html += `<div class="d-flex justify-content-between align-items-start">`;
                         html += `<div>`;
+                        const lugarMunicipio = data.location_municipality || '';
                         html += `<strong class="text-dark">${instructor}</strong> <span class="badge ${jornadaClass}">${jornadaLabel}</span>`;
+                        if (lugarMunicipio) {
+                            html += ` <span class="badge bg-info text-dark">${lugarMunicipio}</span>`;
+                        }
                         html += `<div class="mt-1">`;
                         html += `<span class="badge bg-success me-1">${data.ficha}</span>`;
                         html += `<span class="text-primary fw-bold" style="font-size: 0.9rem;">${data.subject}</span>`;
@@ -660,6 +696,59 @@ function loadAssignmentsPanel() {
             panel.innerHTML = html;
         })
         .catch(error => console.error('Error:', error));
+}
+
+function loadHorasAsignadas() {
+    const container = document.getElementById('horas-container');
+    if (!container) return;
+
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const label = document.getElementById('horas-mes-label');
+    if (label) label.textContent = meses[currentMonth] + ' ' + currentYear;
+
+    const programId = document.getElementById('filter-ficha').value;
+    const instructorFilterEl = document.getElementById('filter-instructor');
+    const instructorName = instructorFilterEl ? instructorFilterEl.value : '';
+    const profileInput = document.getElementById('search-profile');
+    const professionalProfile = profileInput ? profileInput.value.trim() : '';
+
+    let url = `/get_current_assignments?month=${currentMonth}&year=${currentYear}`;
+    if (programId) url += `&program_id=${programId}`;
+    if (instructorName) url += `&instructor_name=${encodeURIComponent(instructorName)}`;
+    if (professionalProfile) url += `&professional_profile=${encodeURIComponent(professionalProfile)}`;
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (Object.keys(data).length === 0) {
+                container.innerHTML = '<p class="text-muted small mb-0">No hay asignaciones.</p>';
+                return;
+            }
+            // Horas reales por jornada
+            const horasPorJornada = {7: 5, 12: 6, 18: 4};
+            // Acumular horas y sesiones por instructor
+            const resumen = {};
+            for (const [instructor, asignaciones] of Object.entries(data)) {
+                let totalHoras = 0, sesiones = 0;
+                for (const a of asignaciones) {
+                    totalHoras += horasPorJornada[a.hour] || 0;
+                    sesiones++;
+                }
+                resumen[instructor] = { horas: totalHoras, sesiones };
+            }
+            const sorted = Object.entries(resumen).sort((a, b) => b[1].horas - a[1].horas);
+            let html = '<div class="table-responsive"><table class="table table-sm table-striped mb-0" style="font-size:0.82rem;">';
+            html += '<thead class="table-success"><tr><th>Instructor</th><th class="text-center">Sesiones</th><th class="text-center">Horas</th></tr></thead><tbody>';
+            for (const [instructor, info] of sorted) {
+                html += `<tr><td>${instructor}</td><td class="text-center">${info.sesiones}</td><td class="text-center"><span class="badge bg-success">${info.horas}h</span></td></tr>`;
+            }
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        })
+        .catch(err => {
+            console.error('Error horas:', err);
+            container.innerHTML = '<p class="text-danger small mb-0">Error al cargar.</p>';
+        });
 }
 
 function loadCalendar() {
