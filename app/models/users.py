@@ -125,3 +125,16 @@ class PasswordHistory(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     user = db.relationship('Users', backref=db.backref('password_history', lazy=True, cascade='all, delete-orphan'))
+
+
+class GestorEquipo(db.Model):
+    """Relación entre un gestor y los instructores que conforman su equipo de trabajo."""
+    __tablename__ = 'gestor_equipo'
+
+    gestor_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    instructor_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    gestor = db.relationship('Users', foreign_keys=[gestor_id],
+                             backref=db.backref('equipo_miembros', lazy=True, cascade='all, delete-orphan'))
+    instructor = db.relationship('Users', foreign_keys=[instructor_id])

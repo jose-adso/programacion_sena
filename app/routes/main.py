@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, jsonify, request
 from flask_login import login_required, current_user
 from app.models.competency import CompetencyRecord, CalendarAssignment
 from app.models.training import TrainingProgram
-from app.models.users import Users
+from app.models.users import Users, GestorEquipo
 from app import db
 from datetime import datetime
 
@@ -156,7 +156,18 @@ def home():
     # Solo instructores usan el filtro por asignatura propia.
     is_instructor = current_user.rol_activo == 'instructor'
     current_asignatura = current_user.asignatura if is_instructor else ''
-    
+
+    # Equipo de trabajo del gestor (solo aplica si el usuario es gestor)
+    equipo_ids = []
+    all_instructors = []
+    if current_user.rol_activo == 'gestor':
+        equipo = GestorEquipo.query.filter_by(gestor_id=current_user.id).all()
+        equipo_ids = [e.instructor_id for e in equipo]
+        all_instructors = [
+            {"id": u.id, "nombre": u.nombre, "perfil_profesional": u.perfil_profesional or ""}
+            for u in Users.query.filter_by(rol='instructor').order_by(Users.nombre).all()
+        ]
+
     return render_template("home.html", 
         username=current_user.nombre, 
         instructors=instructors, 
@@ -164,7 +175,41 @@ def home():
         user_instructors=user_instructors, 
         available_instructors=available_instructors,
         current_user_rol=current_user.rol_activo,
-        current_user_asignatura=current_asignatura)
+        current_user_asignatura=current_asignatura,
+        equipo_ids=equipo_ids,
+        all_instructors=all_instructors)
+
+
+@main_bp.route("/gestor/equipo", methods=["GET"])
+@login_required
+def get_gestor_equipo():
+    if current_user.rol_activo != 'gestor':
+        return jsonify({"error": "No autorizado"}), 403
+    equipo = GestorEquipo.query.filter_by(gestor_id=current_user.id).all()
+    return jsonify({"equipo": [e.instructor_id for e in equipo]})
+
+
+@main_bp.route("/gestor/equipo", methods=["POST"])
+@login_required
+def save_gestor_equipo():
+    if current_user.rol_activo != 'gestor':
+        return jsonify({"error": "No autorizado"}), 403
+    data = request.get_json()
+    instructor_ids = data.get("instructor_ids", [])
+
+    # Validar que todos los IDs pertenezcan a instructores reales
+    valid_ids = {
+        u.id for u in Users.query.filter(
+            Users.id.in_(instructor_ids),
+            Users.rol == 'instructor'
+        ).all()
+    }
+
+    GestorEquipo.query.filter_by(gestor_id=current_user.id).delete()
+    for iid in valid_ids:
+        db.session.add(GestorEquipo(gestor_id=current_user.id, instructor_id=iid))
+    db.session.commit()
+    return jsonify({"success": True, "count": len(valid_ids)})
 
 
 @main_bp.route("/get_calendar_data")

@@ -36,6 +36,22 @@
                                     <option value="{{ current_user.nombre }}" selected>{{ current_user.nombre }}</option>
                                 </select>
                             </div>
+                            {% elif current_user.rol_activo == 'gestor' %}
+                            <div class="input-group input-group-sm" style="width: 320px;">
+                                <span class="input-group-text" style="font-size: 0.75rem;">Instructor:</span>
+                                <input type="text" id="search-instructor" class="form-control form-control-sm" placeholder="Buscar en equipo..." onkeyup="filterInstructors()">
+                                <select id="filter-instructor" class="form-select form-select-sm" style="width: 80px;" onchange="applyFilters();">
+                                    <option value="">Mi equipo</option>
+                                    {% for user in user_instructors %}
+                                    {% if user.id in equipo_ids %}
+                                    <option value="{{ user.nombre }}" data-asignatura="{{ user.asignatura or '' }}" data-profile="{{ user.perfil_profesional or '' }}">{{ user.nombre }}</option>
+                                    {% endif %}
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="openEquipoModal()" title="Gestionar equipo de trabajo">
+                                <i class="bi bi-people-fill"></i>
+                            </button>
                             {% else %}
                             <div class="input-group input-group-sm" style="width: 320px;">
                                 <span class="input-group-text" style="font-size: 0.75rem;">Instructor:</span>
@@ -223,11 +239,52 @@
                     <p class="text-muted small">Cargando...</p>
                 </div>
             </div>
+
+            {% if current_user.rol_activo == 'super admin' %}
+            <!-- Cambios de contraseña recientes - solo super admin -->
+            <div class="card mb-3">
+                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-shield-lock"></i> Cambios de Contraseña</h5>
+                    <small id="pwd-mes-label" class="text-white-50"></small>
+                </div>
+                <div class="card-body p-2" id="pwd-container">
+                    <p class="text-muted small">Cargando...</p>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
     
     <a href="{{ url_for('auth.logout') }}" class="btn btn-danger mt-3">Cerrar sesión</a>
 </div>
+
+{% if current_user.rol_activo == 'gestor' %}
+<!-- Modal Gestionar Equipo de Trabajo -->
+<div class="modal fade" id="equipoModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-people-fill"></i> Gestionar Equipo de Trabajo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">Selecciona los instructores que forman parte de tu equipo. Solo verás estos instructores en los filtros del calendario.</p>
+                <div class="mb-2">
+                    <input type="text" id="equipo-search" class="form-control form-control-sm" placeholder="Buscar instructor..." onkeyup="filterEquipoSearch()">
+                </div>
+                <div id="equipo-lista" style="max-height:400px; overflow-y:auto;">
+                    <p class="text-muted">Cargando instructores...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <small class="text-muted me-auto" id="equipo-count"></small>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="saveEquipo()"><i class="bi bi-save"></i> Guardar equipo</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Modal para asignar instructor -->
 <div class="modal fade" id="assignmentModal" tabindex="-1">
@@ -453,6 +510,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCalendar();
     loadAssignmentsPanel();
     loadHorasAsignadas();
+    loadPasswordChanges();
 });
 
 function changeViewMode() {
@@ -1501,5 +1559,147 @@ function saveWeeklyCompetency() {
         alert('Error de conexión');
     });
 }
+
+{% if current_user.rol_activo == 'super admin' %}
+function loadPasswordChanges() {
+    const month = currentMonth;
+    const year = currentYear;
+    const container = document.getElementById('pwd-container');
+    if (!container) return;
+
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const labelEl = document.getElementById('pwd-mes-label');
+    if (labelEl) labelEl.textContent = meses[month] + ' ' + year;
+
+    container.innerHTML = '<p class="text-muted small">Cargando...</p>';
+
+    fetch(`/admin/password_changes_by_week?month=${month}&year=${year}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                container.innerHTML = `<p class="text-danger small">${data.error}</p>`;
+                return;
+            }
+            const weeks = data.weeks || {};
+            const total = data.total || 0;
+
+            if (total === 0) {
+                container.innerHTML = '<p class="text-muted small">Sin cambios este mes.</p>';
+                return;
+            }
+
+            let html = '';
+            const semanas = Object.keys(weeks).sort();
+            for (const sem of semanas) {
+                const cambios = weeks[sem];
+                html += `<div class="mb-2">`;
+                html += `<div class="d-flex justify-content-between align-items-center mb-1">`;
+                html += `<strong class="text-danger small">${sem}</strong>`;
+                html += `<span class="badge bg-secondary">${cambios.length}</span></div>`;
+                html += `<div class="table-responsive"><table class="table table-sm table-bordered mb-0" style="font-size:0.75rem;">`;
+                html += `<thead class="table-light"><tr><th>Usuario</th><th>Rol</th><th>Fecha</th></tr></thead><tbody>`;
+                for (const c of cambios) {
+                    html += `<tr><td>${c.nombre}</td><td><span class="badge bg-primary">${c.rol}</span></td><td>${c.fecha}</td></tr>`;
+                }
+                html += `</tbody></table></div></div>`;
+            }
+            html += `<div class="text-end"><small class="text-muted">Total: <strong>${total}</strong> cambios</small></div>`;
+            container.innerHTML = html;
+        })
+        .catch(() => {
+            container.innerHTML = '<p class="text-danger small">Error al cargar.</p>';
+        });
+}
+{% else %}
+function loadPasswordChanges() {}
+{% endif %}
+
+{% if current_user.rol_activo == 'gestor' %}
+// ---- Equipo de trabajo del gestor ----
+let _equipoTodos = [];   // todos los instructores disponibles
+let _equipoActual = new Set();  // IDs actualmente en el equipo
+
+function openEquipoModal() {
+    const modal = new bootstrap.Modal(document.getElementById('equipoModal'));
+    modal.show();
+    const lista = document.getElementById('equipo-lista');
+    lista.innerHTML = '<p class="text-muted small">Cargando...</p>';
+    document.getElementById('equipo-search').value = '';
+
+    fetch('/gestor/equipo')
+        .then(r => r.json())
+        .then(data => {
+            _equipoActual = new Set(data.equipo || []);
+            // Cargar todos los instructores desde el DOM (pasados por Jinja2)
+            _equipoTodos = {{ all_instructors | tojson(indent=0) | safe }}.map(u => ({
+                id: u.id,
+                nombre: u.nombre,
+                perfil: u.perfil_profesional || ''
+            }));
+            renderEquipoLista(_equipoTodos);
+        })
+        .catch(() => {
+            lista.innerHTML = '<p class="text-danger small">Error al cargar.</p>';
+        });
+}
+
+function renderEquipoLista(instructores) {
+    const lista = document.getElementById('equipo-lista');
+    if (!instructores.length) {
+        lista.innerHTML = '<p class="text-muted small">No hay instructores registrados.</p>';
+        return;
+    }
+    let html = '<div class="list-group">';
+    for (const u of instructores) {
+        const checked = _equipoActual.has(u.id) ? 'checked' : '';
+        html += `<label class="list-group-item d-flex align-items-center gap-2 py-2">
+            <input type="checkbox" class="form-check-input equipo-cb" value="${u.id}" ${checked}>
+            <span><strong>${u.nombre}</strong>`;
+        if (u.perfil) html += ` <small class="text-muted">— ${u.perfil}</small>`;
+        html += `</span></label>`;
+    }
+    html += '</div>';
+    lista.innerHTML = html;
+    updateEquipoCount();
+
+    lista.querySelectorAll('.equipo-cb').forEach(cb => {
+        cb.addEventListener('change', updateEquipoCount);
+    });
+}
+
+function filterEquipoSearch() {
+    const q = document.getElementById('equipo-search').value.toLowerCase();
+    const filtrados = _equipoTodos.filter(u =>
+        u.nombre.toLowerCase().includes(q) || (u.perfil || '').toLowerCase().includes(q)
+    );
+    renderEquipoLista(filtrados);
+}
+
+function updateEquipoCount() {
+    const total = document.querySelectorAll('.equipo-cb:checked').length;
+    const el = document.getElementById('equipo-count');
+    if (el) el.textContent = `${total} instructor(es) seleccionado(s)`;
+}
+
+function saveEquipo() {
+    const ids = Array.from(document.querySelectorAll('.equipo-cb:checked')).map(cb => parseInt(cb.value));
+    fetch('/gestor/equipo', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({instructor_ids: ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('equipoModal')).hide();
+            // Recargar la página para actualizar el filtro con el nuevo equipo
+            location.reload();
+        } else {
+            alert('Error al guardar el equipo: ' + (data.error || 'desconocido'));
+        }
+    })
+    .catch(() => alert('Error de conexión'));
+}
+{% endif %}
 </script>
 {% endblock %}

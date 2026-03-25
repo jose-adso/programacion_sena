@@ -320,3 +320,45 @@ def eliminar(user_id):
         flash("Error al eliminar el usuario", "danger")
     
     return redirect(url_for("admin.panel"))
+
+
+@admin_bp.route("/password_changes_by_week")
+@login_required
+def password_changes_by_week():
+    if current_user.rol != "super admin":
+        return jsonify({"error": "No autorizado"}), 403
+
+    from app.models.users import PasswordHistory
+    from calendar import monthrange
+    import math
+
+    year = request.args.get('year', type=int, default=datetime.now().year)
+    month_0 = request.args.get('month', type=int, default=datetime.now().month - 1)
+    month_1 = month_0 + 1  # convertir a 1-based
+
+    days_in_month = monthrange(year, month_1)[1]
+    start_dt = datetime(year, month_1, 1)
+    end_dt = datetime(year, month_1, days_in_month, 23, 59, 59)
+
+    records = (
+        db.session.query(PasswordHistory, Users)
+        .join(Users, Users.id == PasswordHistory.user_id)
+        .filter(PasswordHistory.created_at >= start_dt,
+                PasswordHistory.created_at <= end_dt)
+        .order_by(PasswordHistory.created_at.desc())
+        .all()
+    )
+
+    weeks = {}
+    for ph, user in records:
+        week_num = math.ceil(ph.created_at.day / 7)
+        week_key = f"Semana {week_num}"
+        if week_key not in weeks:
+            weeks[week_key] = []
+        weeks[week_key].append({
+            "nombre": user.nombre,
+            "rol": user.rol,
+            "fecha": ph.created_at.strftime("%d/%m/%Y %H:%M")
+        })
+
+    return jsonify({"weeks": weeks, "total": len(records)})
