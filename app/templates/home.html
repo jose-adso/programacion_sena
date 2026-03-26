@@ -49,8 +49,8 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="openEquipoModal()" title="Gestionar equipo de trabajo">
-                                <i class="bi bi-people-fill"></i>
+                            <button class="btn btn-sm" onclick="openEquipoModal()" title="Gestionar equipo de trabajo" style="background-color: #6abf69; color: #fff; border: none; opacity: 0.85;">
+                                <i class="bi bi-people-fill"></i> Gestionar equipo
                             </button>
                             {% else %}
                             <div class="input-group input-group-sm" style="width: 320px;">
@@ -271,6 +271,10 @@
                 <p class="text-muted small">Selecciona los instructores que forman parte de tu equipo. Solo verás estos instructores en los filtros del calendario.</p>
                 <div class="mb-2">
                     <input type="text" id="equipo-search" class="form-control form-control-sm" placeholder="Buscar instructor..." onkeyup="filterEquipoSearch()">
+                </div>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <input type="checkbox" id="equipo-select-all" class="form-check-input" onchange="agregarTodoEquipo(this)" style="cursor:pointer;">
+                    <label for="equipo-select-all" class="form-check-label small text-muted" style="cursor:pointer;">Seleccionar todos</label>
                 </div>
                 <div id="equipo-lista" style="max-height:400px; overflow-y:auto;">
                     <p class="text-muted">Cargando instructores...</p>
@@ -807,20 +811,14 @@ function loadHorasAsignadas() {
     function renderTabla(resumen, titulo) {
         const sorted = Object.entries(resumen).sort((a, b) => b[1].horas - a[1].horas);
         if (sorted.length === 0) return '<p class="text-muted small mb-0">No hay asignaciones.</p>';
-        let totalHoras = 0, totalSesiones = 0;
         let tbody = '';
         for (const [instructor, info] of sorted) {
-            totalHoras += info.horas;
-            totalSesiones += info.sesiones;
             tbody += `<tr><td>${instructor}</td><td class="text-center">${info.sesiones}</td><td class="text-center"><span class="badge bg-success">${info.horas}h</span></td></tr>`;
         }
         return `<div class="table-responsive">
             <table class="table table-sm table-striped mb-0" style="font-size:0.82rem;">
                 <thead class="table-success"><tr><th>${titulo}</th><th class="text-center">Sesiones</th><th class="text-center">Horas</th></tr></thead>
                 <tbody>${tbody}</tbody>
-                <tfoot class="table-dark fw-bold">
-                    <tr><td>Total</td><td class="text-center">${totalSesiones}</td><td class="text-center">${totalHoras}h</td></tr>
-                </tfoot>
             </table></div>`;
     }
 
@@ -933,7 +931,7 @@ function generateCalendar() {
     const weeksCount = Math.ceil((daysInMonth + startDayOfWeek) / 7);
     
     const daysNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const isInstructorView = currentUserRol === 'instructor';
+    const isInstructorView = currentUserRol === 'instructor' || currentUserRol === 'gestor';
     
     if (currentViewMode === 'week') {
         // Vista semanal
@@ -1663,7 +1661,13 @@ function renderEquipoLista(instructores) {
     updateEquipoCount();
 
     lista.querySelectorAll('.equipo-cb').forEach(cb => {
-        cb.addEventListener('change', updateEquipoCount);
+        cb.addEventListener('change', () => {
+            updateEquipoCount();
+            const all = document.querySelectorAll('.equipo-cb');
+            const allChecked = Array.from(all).every(c => c.checked);
+            const masterCb = document.getElementById('equipo-select-all');
+            if (masterCb) masterCb.checked = allChecked;
+        });
     });
 }
 
@@ -1679,6 +1683,12 @@ function updateEquipoCount() {
     const total = document.querySelectorAll('.equipo-cb:checked').length;
     const el = document.getElementById('equipo-count');
     if (el) el.textContent = `${total} instructor(es) seleccionado(s)`;
+}
+
+function agregarTodoEquipo(masterCb) {
+    const checked = masterCb ? masterCb.checked : true;
+    document.querySelectorAll('.equipo-cb').forEach(cb => { cb.checked = checked; });
+    updateEquipoCount();
 }
 
 function saveEquipo() {

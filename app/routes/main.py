@@ -167,6 +167,13 @@ def home():
             {"id": u.id, "nombre": u.nombre, "perfil_profesional": u.perfil_profesional or ""}
             for u in Users.query.filter_by(rol='instructor').order_by(Users.nombre).all()
         ]
+        # Filtrar user_instructors y available_instructors al equipo del gestor
+        equipo_nombres = {
+            u.nombre for u in Users.query.filter(Users.id.in_(equipo_ids)).all()
+        }
+        user_instructors = [u for u in user_instructors if u.nombre in equipo_nombres]
+        available_instructors = [u for u in available_instructors if getattr(u, 'nombre', None) in equipo_nombres]
+        instructors = [i for i in instructors if i in equipo_nombres]
 
     return render_template("home.html", 
         username=current_user.nombre, 
@@ -224,7 +231,7 @@ def get_calendar_data():
     instructor_name = request.args.get('instructor_name')  # Filtrar por instructor
     professional_profile = (request.args.get('professional_profile') or '').strip()  # Filtrar por perfil profesional
     
-    # Gestor ve la misma información global que admin (solo lectura).
+    # Gestor ve solo su equipo de trabajo (solo lectura).
     is_admin = current_user.rol_activo in ['super admin', 'administrador', 'gestor']
     
     # Instructor solo puede ver sus propias asignaciones.
@@ -239,6 +246,17 @@ def get_calendar_data():
     
     if instructor_name:
         query = query.filter_by(instructor_name=instructor_name)
+    elif current_user.rol_activo == 'gestor':
+        # Filtrar solo instructores del equipo del gestor
+        equipo = GestorEquipo.query.filter_by(gestor_id=current_user.id).all()
+        equipo_ids = [e.instructor_id for e in equipo]
+        if equipo_ids:
+            equipo_nombres = [
+                u.nombre for u in Users.query.filter(Users.id.in_(equipo_ids)).all()
+            ]
+            query = query.filter(CalendarAssignment.instructor_name.in_(equipo_nombres))
+        else:
+            query = query.filter(CalendarAssignment.id == -1)
 
     if professional_profile and current_user.rol_activo in ['super admin', 'administrador']:
         query = _filter_query_by_professional_profile(query, professional_profile)
@@ -285,7 +303,7 @@ def get_assignments_by_week():
     
     logger.info(f"DEBUG get_assignments_by_week: program_id={program_id}, instructor_name={instructor_name}")
     
-    # Gestor ve la misma información global que admin (solo lectura).
+    # Gestor ve solo su equipo de trabajo (solo lectura).
     is_admin = current_user.rol_activo in ['super admin', 'administrador', 'gestor']
     
     # Instructor solo puede ver sus propias asignaciones.
@@ -315,6 +333,16 @@ def get_assignments_by_week():
     
     if instructor_name:
         query = query.filter_by(instructor_name=instructor_name)
+    elif current_user.rol_activo == 'gestor':
+        equipo = GestorEquipo.query.filter_by(gestor_id=current_user.id).all()
+        equipo_ids = [e.instructor_id for e in equipo]
+        if equipo_ids:
+            equipo_nombres = [
+                u.nombre for u in Users.query.filter(Users.id.in_(equipo_ids)).all()
+            ]
+            query = query.filter(CalendarAssignment.instructor_name.in_(equipo_nombres))
+        else:
+            query = query.filter(CalendarAssignment.id == -1)
 
     if professional_profile and current_user.rol_activo in ['super admin', 'administrador']:
         query = _filter_query_by_professional_profile(query, professional_profile)
@@ -369,7 +397,7 @@ def get_current_assignments():
     instructor_name = request.args.get('instructor_name')
     professional_profile = (request.args.get('professional_profile') or '').strip()
     
-    # Gestor ve la misma información global que admin (solo lectura).
+    # Gestor ve solo su equipo de trabajo (solo lectura).
     is_admin = current_user.rol_activo in ['super admin', 'administrador', 'gestor']
     
     # Instructor solo puede ver sus propias asignaciones.
@@ -384,6 +412,16 @@ def get_current_assignments():
     
     if instructor_name:
         query = query.filter_by(instructor_name=instructor_name)
+    elif current_user.rol_activo == 'gestor':
+        equipo = GestorEquipo.query.filter_by(gestor_id=current_user.id).all()
+        equipo_ids = [e.instructor_id for e in equipo]
+        if equipo_ids:
+            equipo_nombres = [
+                u.nombre for u in Users.query.filter(Users.id.in_(equipo_ids)).all()
+            ]
+            query = query.filter(CalendarAssignment.instructor_name.in_(equipo_nombres))
+        else:
+            query = query.filter(CalendarAssignment.id == -1)
 
     if professional_profile and current_user.rol_activo in ['super admin', 'administrador']:
         query = _filter_query_by_professional_profile(query, professional_profile)
