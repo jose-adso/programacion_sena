@@ -171,6 +171,8 @@ def home():
         equipo_nombres = {
             u.nombre for u in Users.query.filter(Users.id.in_(equipo_ids)).all()
         }
+        # Incluir al gestor mismo en la lista de instructores
+        equipo_nombres.add(current_user.nombre)
         user_instructors = [u for u in user_instructors if u.nombre in equipo_nombres]
         available_instructors = [u for u in available_instructors if getattr(u, 'nombre', None) in equipo_nombres]
         instructors = [i for i in instructors if i in equipo_nombres]
