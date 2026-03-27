@@ -1083,31 +1083,29 @@ function generateWeekDaysCheckboxes(selectedDay, selectedDayName) {
     const container = document.getElementById('week-days-checkboxes');
     container.innerHTML = '';
     
-    // Calcular el inicio de la semana (lunes)
+    // Calcular el inicio de la semana (domingo)
     const firstDay = new Date(currentYear, currentMonth, 1);
     const startDayOfWeek = firstDay.getDay(); // 0 = Domingo, 1 = Lunes, ...
     
-    // Encontrar el primer lunes del mes
-    let firstMonday = 1;
+    // Encontrar el primer domingo del mes
+    let firstSunday = 1;
     if (startDayOfWeek === 0) {
-        firstMonday = 1;
-    } else if (startDayOfWeek === 1) {
-        firstMonday = 1;
+        firstSunday = 1;
     } else {
-        firstMonday = 8 - startDayOfWeek + 1;
+        firstSunday = 1 + (7 - startDayOfWeek);
     }
     
     // Calcular qué semana contiene el día seleccionado
     const selectedDayNum = parseInt(selectedDay);
-    let weekNumber = Math.floor((selectedDayNum - firstMonday) / 7);
+    let weekNumber = Math.floor((selectedDayNum - firstSunday) / 7);
     if (weekNumber < 0) weekNumber = 0;
     
-    // Calcular los días de esa semana (lunes a viernes)
-    const weekStart = firstMonday + (weekNumber * 7);
-    const daysEs = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+    // Calcular los días de esa semana (domingo a sábado)
+    const weekStart = firstSunday + (weekNumber * 7);
+    const daysEs = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
     
     // Generar checkboxes
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 7; i++) {
         const dayNum = weekStart + i;
         const dayName = daysEs[i];
         
