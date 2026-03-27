@@ -352,6 +352,14 @@
                         <option value="18">Nocturna (6pm-10pm)</option>
                     </select>
                 </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Seleccionar días de la semana:</label>
+                    <div id="week-days-checkboxes" class="d-flex flex-wrap gap-2">
+                        <!-- Los checkboxes se generan dinámicamente -->
+                    </div>
+                    <small class="text-muted">Seleccione los días a los que desea aplicar esta asignación</small>
+                </div>
             </div>
             <div class="modal-footer">
                 {% if current_user.rol_activo != 'gestor' %}
@@ -1064,8 +1072,58 @@ function openAssignmentModal(day, dayName, jornada, instructor = '', materia = '
     document.getElementById('modal-materia').value = materia;
     document.getElementById('modal-ficha').value = programId;
     
+    // Generar checkboxes para los días de la semana
+    generateWeekDaysCheckboxes(day, dayName);
+    
     const modal = new bootstrap.Modal(document.getElementById('assignmentModal'));
     modal.show();
+}
+
+function generateWeekDaysCheckboxes(selectedDay, selectedDayName) {
+    const container = document.getElementById('week-days-checkboxes');
+    container.innerHTML = '';
+    
+    // Calcular el inicio de la semana (lunes)
+    const firstDay = new Date(currentYear, currentMonth, 1);
+    const startDayOfWeek = firstDay.getDay(); // 0 = Domingo, 1 = Lunes, ...
+    
+    // Encontrar el primer lunes del mes
+    let firstMonday = 1;
+    if (startDayOfWeek === 0) {
+        firstMonday = 1;
+    } else if (startDayOfWeek === 1) {
+        firstMonday = 1;
+    } else {
+        firstMonday = 8 - startDayOfWeek + 1;
+    }
+    
+    // Calcular qué semana contiene el día seleccionado
+    const selectedDayNum = parseInt(selectedDay);
+    let weekNumber = Math.floor((selectedDayNum - firstMonday) / 7);
+    if (weekNumber < 0) weekNumber = 0;
+    
+    // Calcular los días de esa semana (lunes a viernes)
+    const weekStart = firstMonday + (weekNumber * 7);
+    const daysEs = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+    
+    // Generar checkboxes
+    for (let i = 0; i < 5; i++) {
+        const dayNum = weekStart + i;
+        const dayName = daysEs[i];
+        
+        // Verificar que el día sea válido para el mes
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        if (dayNum > 0 && dayNum <= daysInMonth) {
+            const isChecked = dayNum === selectedDayNum;
+            const checkbox = document.createElement('div');
+            checkbox.className = 'form-check form-check-inline';
+            checkbox.innerHTML = `
+                <input class="form-check-input" type="checkbox" id="day-checkbox-${dayNum}" value="${dayNum}" data-day-name="${dayName}" ${isChecked ? 'checked' : ''}>
+                <label class="form-check-label" for="day-checkbox-${dayNum}">${dayName} ${dayNum}</label>
+            `;
+            container.appendChild(checkbox);
+        }
+    }
 }
 
 function saveAssignment() {
@@ -1083,40 +1141,55 @@ function saveAssignment() {
         return;
     }
     
-    fetch('/save_assignment', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            program_id: parseInt(programId),
-            instructor: instructor,
-            subject: materia,
-            day: selectedDayInfo.dayName,
-            day_number: selectedDayInfo.day,
-            month: currentMonth,
-            year: currentYear,
-            hour: jornada
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
-            loadCalendar();
-            loadAssignmentsPanel();
-        } else {
-            alert('Error al guardar: ' + (data.error || 'Desconocido'));
-        }
-    })
-    .catch(error => {
-    // Gestores no pueden eliminar asignaciones
-    if (isGestor) {
-        alert('Los gestores no pueden eliminar asignaciones.');
+    // Obtener los días seleccionados
+    const selectedDays = [];
+    const checkboxes = document.querySelectorAll('#week-days-checkboxes input[type="checkbox"]:checked');
+    checkboxes.forEach(checkbox => {
+        selectedDays.push({
+            day_number: parseInt(checkbox.value),
+            day_name: checkbox.getAttribute('data-day-name')
+        });
+    });
+    
+    if (selectedDays.length === 0) {
+        alert('Por favor seleccione al menos un día');
         return;
     }
     
-        console.error('Error:', error);
-        alert('Error de conexión');
+    // Enviar asignaciones para cada día seleccionado
+    const promises = selectedDays.map(day => {
+        return fetch('/save_assignment', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                program_id: parseInt(programId),
+                instructor: instructor,
+                subject: materia,
+                day: day.day_name,
+                day_number: day.day_number,
+                month: currentMonth,
+                year: currentYear,
+                hour: jornada
+            })
+        }).then(response => response.json());
     });
+    
+    Promise.all(promises)
+        .then(results => {
+            const allSuccess = results.every(r => r.success);
+            if (allSuccess) {
+                bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
+                loadCalendar();
+                loadAssignmentsPanel();
+            } else {
+                const errors = results.filter(r => !r.success).map(r => r.error || 'Desconocido');
+                alert('Error al guardar: ' + errors.join(', '));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error de conexión');
+        });
 }
 
 function deleteAssignment() {
@@ -1130,24 +1203,41 @@ function deleteAssignment() {
         return;
     }
     
-    if (!confirm('¿Está seguro de eliminar esta asignación?')) {
+    // Obtener los días seleccionados
+    const selectedDays = [];
+    const checkboxes = document.querySelectorAll('#week-days-checkboxes input[type="checkbox"]:checked');
+    checkboxes.forEach(checkbox => {
+        selectedDays.push(parseInt(checkbox.value));
+    });
+    
+    if (selectedDays.length === 0) {
+        alert('Por favor seleccione al menos un día');
         return;
     }
     
-    fetch('/remove_calendar_assignment', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            program_id: parseInt(programId),
-            day_number: selectedDayInfo.day,
-            month: currentMonth,
-            year: currentYear,
-            hour: jornada
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
+    if (!confirm(`¿Está seguro de eliminar las asignaciones de ${selectedDays.length} día(s)?`)) {
+        return;
+    }
+    
+    // Eliminar asignaciones para cada día seleccionado
+    const promises = selectedDays.map(dayNumber => {
+        return fetch('/remove_calendar_assignment', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                program_id: parseInt(programId),
+                day_number: dayNumber,
+                month: currentMonth,
+                year: currentYear,
+                hour: jornada
+            })
+        }).then(response => response.json());
+    });
+    
+    Promise.all(promises)
+        .then(results => {
+            const allSuccess = results.every(r => r.success);
+            if (allSuccess) {
             bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
             loadCalendar();
             loadAssignmentsPanel();

@@ -59,6 +59,28 @@
                                 Por favor seleccione la fecha de término
                             </div>
                         </div>
+
+                        <div class="col-12">
+                            <label class="form-label d-block">Dias de formacion *</label>
+                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary day-shortcut" data-mode="weekdays" {% if read_only %}disabled{% endif %}>Lunes a Viernes</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary day-shortcut" data-mode="all" {% if read_only %}disabled{% endif %}>Todos</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger day-shortcut" data-mode="none" {% if read_only %}disabled{% endif %}>Limpiar</button>
+                            </div>
+
+                            {% set selected_days = program.get_scheduled_days() %}
+                            <div class="row row-cols-2 row-cols-md-4 g-2">
+                                {% for day_value, day_label in week_days %}
+                                <div class="col">
+                                    <div class="form-check">
+                                        <input class="form-check-input scheduled-day" type="checkbox" name="scheduled_days" value="{{ day_value }}" id="day_{{ day_value }}" {% if day_value in selected_days %}checked{% endif %} {% if read_only %}disabled{% endif %}>
+                                        <label class="form-check-label" for="day_{{ day_value }}">{{ day_label }}</label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="form-text">Puedes seleccionar uno o varios dias para la misma programacion.</div>
+                        </div>
                     </div>
                     
                     <div class="mt-4">
@@ -74,4 +96,34 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const checkboxes = Array.from(document.querySelectorAll('.scheduled-day'));
+    const shortcuts = document.querySelectorAll('.day-shortcut');
+    const weekDays = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'];
+
+    shortcuts.forEach(function(button) {
+        button.addEventListener('click', function() {
+            const mode = button.getAttribute('data-mode');
+
+            checkboxes.forEach(function(checkbox) {
+                if (checkbox.disabled) {
+                    return;
+                }
+
+                if (mode === 'all') {
+                    checkbox.checked = true;
+                } else if (mode === 'none') {
+                    checkbox.checked = false;
+                } else if (mode === 'weekdays') {
+                    checkbox.checked = weekDays.includes(checkbox.value);
+                }
+            });
+        });
+    });
+});
+</script>
 {% endblock %}

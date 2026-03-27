@@ -24,6 +24,7 @@
                 <th>Lugar/Municipio</th>
                 <th>Fecha de Inicio</th>
                 <th>Fecha de Término</th>
+                <th>Dias</th>
                 <th>Acciones</th>
             </tr>
         </thead>
@@ -37,6 +38,7 @@
                 <td>{{ program.location_municipality or 'N/A' }}</td>
                 <td>{{ program.start_date.strftime('%Y-%m-%d') if program.start_date else 'N/A' }}</td>
                 <td>{{ program.end_date.strftime('%Y-%m-%d') if program.end_date else 'N/A' }}</td>
+                <td>{{ program.get_scheduled_days() | join(', ') if program.get_scheduled_days() else 'N/A' }}</td>
                 <td>
                     {% if current_user.rol_activo != 'gestor' %}
                     <a href="{{ url_for('training.edit_program', program_id=program.id) }}" class="btn btn-sm btn-outline-primary">Editar</a>

@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_mail import Mail
 import os
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
 
 # Flask extensions (initialized here so they can be imported elsewhere)
@@ -49,10 +50,11 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        ensure_training_program_columns()
 
     from app.models.users import Users
     from datetime import datetime
-    
+
     @login_manager.user_loader
     def load_user(user_id):
         try:
@@ -100,3 +102,13 @@ def create_app():
     app.register_blueprint(training_bp)
 
     return app
+
+
+def ensure_training_program_columns():
+    """Agrega columnas nuevas de forma segura cuando no existe un sistema de migraciones."""
+    inspector = inspect(db.engine)
+    columns = {column["name"] for column in inspector.get_columns("training_program")}
+
+    if "scheduled_days" not in columns:
+        db.session.execute(text("ALTER TABLE training_program ADD COLUMN scheduled_days VARCHAR(100)"))
+        db.session.commit()
