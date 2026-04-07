@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from app.models.training import TrainingProgram
+from app.models.competency import CompetencyRecord
 from app import db
 from datetime import datetime, date
 from openpyxl import load_workbook
@@ -70,6 +71,35 @@ EXCEL_HEADER_ALIASES = {
         "municipio",
         "lugar de formacion",
         "lugar de formación",
+    },
+}
+
+DEFAULT_COMPETENCY_COLUMNS = {
+    "program_reference": 0,  # Columna A
+    "competencia": 1,        # Columna B
+    "resultado": 2,          # Columna C
+}
+
+REQUIRED_COMPETENCY_FIELDS = set(DEFAULT_COMPETENCY_COLUMNS.keys())
+
+COMPETENCY_HEADER_ALIASES = {
+    "program_reference": {
+        "ficha",
+        "numero de ficha",
+        "número de ficha",
+        "nombre de ficha",
+        "programa",
+        "nombre del programa",
+    },
+    "competencia": {
+        "competencia",
+        "competencias",
+    },
+    "resultado": {
+        "resultado",
+        "resultado de aprendizaje",
+        "resultados de aprendizaje",
+        "ra",
     },
 }
 
@@ -239,6 +269,201 @@ def load_excel_rows(excel_file, filename):
     )
 
 
+def find_competency_header_row(rows, max_scan_rows=20):
+    for row_number, row in enumerate(rows[:max_scan_rows], start=1):
+        detected_columns = set()
+
+        for cell_value in row:
+            header_key = normalize_header_key(cell_value)
+            if not header_key:
+                continue
+
+            for field_name, aliases in COMPETENCY_HEADER_ALIASES.items():
+                if field_name in detected_columns:
+                    continue
+
+                if any(alias == header_key or alias in header_key for alias in aliases):
+                    detected_columns.add(field_name)
+                    break
+
+        if REQUIRED_COMPETENCY_FIELDS.issubset(detected_columns):
+            return row_number
+
+    return None
+
+
+def row_has_valid_competency_data(row):
+    program_reference = normalize_excel_text(row[DEFAULT_COMPETENCY_COLUMNS["program_reference"]] if len(row) > DEFAULT_COMPETENCY_COLUMNS["program_reference"] else None)
+    competencia = normalize_excel_text(row[DEFAULT_COMPETENCY_COLUMNS["competencia"]] if len(row) > DEFAULT_COMPETENCY_COLUMNS["competencia"] else None)
+    return bool(program_reference and competencia)
+
+
+def load_competency_excel_rows(excel_file, filename):
+    sheets_data = []
+
+    if filename.endswith(".xls"):
+        file_bytes = excel_file.read()
+        excel_file.stream.seek(0)
+        workbook = xlrd.open_workbook(file_contents=file_bytes)
+        for sheet in workbook.sheets():
+            rows = [sheet.row_values(row_index) for row_index in range(sheet.nrows)]
+            sheets_data.append((sheet.name, rows))
+    else:
+        excel_file.stream.seek(0)
+        workbook = load_workbook(excel_file, data_only=True)
+        try:
+            for sheet in workbook.worksheets:
+                rows = list(sheet.iter_rows(values_only=True))
+                sheets_data.append((sheet.title, rows))
+        finally:
+            workbook.close()
+
+    if not sheets_data:
+        raise ValueError("El Excel no contiene hojas con datos")
+
+    best_match = None
+    for sheet_name, rows in sheets_data:
+        header_row_number = find_competency_header_row(rows)
+        valid_rows = 0
+        for row_index, row in enumerate(rows, start=1):
+            if header_row_number and row_index <= header_row_number:
+                continue
+            if row_has_valid_competency_data(row):
+                valid_rows += 1
+
+        score = (1 if header_row_number else 0, valid_rows)
+        if best_match is None or score > best_match[0]:
+            best_match = (score, rows, header_row_number or 0, sheet_name)
+
+    if best_match and best_match[0][1] > 0:
+        _, rows, header_row_number, sheet_name = best_match
+        return rows, header_row_number, DEFAULT_COMPETENCY_COLUMNS.copy(), sheet_name
+
+    raise ValueError(
+        "No se encontró una hoja válida para importar competencias. Usa la ficha o nombre del programa en A, la competencia en B y el resultado de aprendizaje en C."
+    )
+
+
+def resolve_training_program(program_reference, programs_by_ficha, programs_by_name):
+    ficha_key = normalize_ficha_number(program_reference)
+    if ficha_key and ficha_key in programs_by_ficha:
+        return programs_by_ficha[ficha_key]
+
+    name_key = normalize_header_key(program_reference)
+    if name_key and name_key in programs_by_name:
+        return programs_by_name[name_key]
+
+    return None
+
+
+def import_competencies_from_excel(excel_file):
+    filename = (excel_file.filename or "").lower()
+    if not filename.endswith((".xls", ".xlsx")):
+        raise ValueError("El archivo debe ser un Excel válido (.xls o .xlsx)")
+
+    programs = TrainingProgram.query.all()
+    programs_by_ficha = {
+        normalize_ficha_number(program.ficha_number): program
+        for program in programs
+        if program.ficha_number
+    }
+    programs_by_name = {
+        normalize_header_key(program.program_name): program
+        for program in programs
+        if program.program_name
+    }
+
+    existing_records = CompetencyRecord.query.all()
+    records_by_program_comp = {
+        (record.training_program_id, normalize_header_key(record.competencia)): record
+        for record in existing_records
+        if record.competencia
+    }
+    duplicate_keys = {
+        (
+            record.training_program_id,
+            normalize_header_key(record.competencia),
+            normalize_header_key(record.resultado or "")
+        )
+        for record in existing_records
+    }
+
+    imported_count = 0
+    updated_count = 0
+    skipped_rows = []
+    unresolved_rows = []
+    duplicate_rows = []
+
+    rows, header_row_number, column_map, sheet_name = load_competency_excel_rows(excel_file, filename)
+
+    for row_index, row in enumerate(rows, start=1):
+        if header_row_number and row_index <= header_row_number:
+            continue
+
+        program_reference_raw = row[column_map["program_reference"]] if len(row) > column_map["program_reference"] else None
+        competencia_raw = row[column_map["competencia"]] if len(row) > column_map["competencia"] else None
+        resultado_raw = row[column_map["resultado"]] if len(row) > column_map["resultado"] else None
+
+        if all(value in (None, "") for value in (program_reference_raw, competencia_raw, resultado_raw)):
+            continue
+
+        program_reference = normalize_excel_text(program_reference_raw)
+        competencia = normalize_excel_text(competencia_raw)
+        resultado = normalize_excel_text(resultado_raw)
+
+        if program_reference.lower() in {"ficha", "numero de ficha", "número de ficha", "nombre de ficha", "programa", "nombre del programa"}:
+            continue
+        if competencia.lower() in {"competencia", "competencias"}:
+            continue
+
+        if not program_reference or not competencia:
+            skipped_rows.append(row_index)
+            continue
+
+        program = resolve_training_program(program_reference, programs_by_ficha, programs_by_name)
+        if not program:
+            unresolved_rows.append(row_index)
+            continue
+
+        duplicate_key = (
+            program.id,
+            normalize_header_key(competencia),
+            normalize_header_key(resultado or "")
+        )
+        if duplicate_key in duplicate_keys:
+            duplicate_rows.append(row_index)
+            continue
+
+        record_key = (program.id, normalize_header_key(competencia))
+        existing_record = records_by_program_comp.get(record_key)
+
+        if existing_record:
+            existing_record.resultado = resultado or existing_record.resultado
+            existing_record.instructor_name = existing_record.instructor_name or "CATALOGO EXCEL"
+            existing_record.updated_at = datetime.utcnow()
+            updated_count += 1
+            duplicate_keys.add((
+                program.id,
+                normalize_header_key(existing_record.competencia),
+                normalize_header_key(existing_record.resultado or "")
+            ))
+            continue
+
+        new_record = CompetencyRecord(
+            training_program_id=program.id,
+            competencia=competencia,
+            resultado=resultado or None,
+            instructor_name="CATALOGO EXCEL",
+            horario=None,
+        )
+        db.session.add(new_record)
+        records_by_program_comp[record_key] = new_record
+        duplicate_keys.add(duplicate_key)
+        imported_count += 1
+
+    return imported_count, updated_count, skipped_rows, unresolved_rows, duplicate_rows, sheet_name
+
+
 def import_programs_from_excel(excel_file):
     filename = (excel_file.filename or "").lower()
     if not filename.endswith((".xls", ".xlsx")):
@@ -314,6 +539,69 @@ def import_programs_from_excel(excel_file):
         imported_count += 1
 
     return imported_count, updated_count, skipped_rows, updated_rows, sheet_name
+
+@training_bp.route("/competencies/upload", methods=["GET", "POST"])
+@login_required
+def upload_competencies():
+    if current_user.rol_activo not in ["super admin", "administrador", "gestor"]:
+        flash("No tienes permiso para acceder a la carga de competencias", "danger")
+        return redirect(url_for("main.home"))
+
+    if request.method == "POST" and current_user.rol_activo == "gestor":
+        flash("Los gestores no pueden cargar competencias por Excel", "danger")
+        return redirect(url_for("training.upload_competencies"))
+
+    if request.method == "POST":
+        excel_file = request.files.get("excel_file")
+        if not excel_file or not excel_file.filename:
+            flash("Selecciona un archivo Excel para cargar competencias", "danger")
+            return redirect(url_for("training.upload_competencies"))
+
+        try:
+            imported_count, updated_count, skipped_rows, unresolved_rows, duplicate_rows, sheet_name = import_competencies_from_excel(excel_file)
+            db.session.commit()
+
+            if imported_count or updated_count:
+                flash(
+                    f"Carga completada desde la hoja '{sheet_name}': {imported_count} competencias nuevas y {updated_count} actualizadas.",
+                    "success"
+                )
+            else:
+                flash("No se importaron competencias. Verifica que el Excel tenga ficha o programa en A, competencia en B y resultado en C.", "warning")
+
+            if unresolved_rows:
+                flash(
+                    f"No se encontraron fichas/programas para las filas: {', '.join(map(str, unresolved_rows[:15]))}" + ("..." if len(unresolved_rows) > 15 else ""),
+                    "warning"
+                )
+
+            if duplicate_rows:
+                flash(
+                    f"Se omitieron competencias repetidas en las filas: {', '.join(map(str, duplicate_rows[:15]))}" + ("..." if len(duplicate_rows) > 15 else ""),
+                    "info"
+                )
+
+            if skipped_rows:
+                flash(
+                    f"Se omitieron filas incompletas o inválidas: {', '.join(map(str, skipped_rows[:15]))}" + ("..." if len(skipped_rows) > 15 else ""),
+                    "warning"
+                )
+
+            return redirect(url_for("training.upload_competencies"))
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), "danger")
+            return redirect(url_for("training.upload_competencies"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error al cargar competencias desde Excel: {str(e)}", "danger")
+            return redirect(url_for("training.upload_competencies"))
+
+    return render_template(
+        "training/upload_competencies.html",
+        read_only=(current_user.rol_activo == "gestor"),
+    )
+
 
 @training_bp.route("/programs")
 @login_required

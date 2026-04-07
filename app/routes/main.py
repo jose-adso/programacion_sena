@@ -105,11 +105,14 @@ def home():
     # DEBUG: Log del usuario actual y su rol
     logger.info(f"DEBUG: Usuario actual: {current_user.nombre}, Rol: {current_user.rol}, Asignatura: {current_user.asignatura}")
     
-    # Obtener lista de instructores únicos desde CompetencyRecord
-    instructors = db.session.query(CompetencyRecord.instructor_name).distinct().all()
-    instructors = [i[0] for i in instructors]
+    # Obtener lista de instructores únicos desde asignaciones del calendario.
+    instructors = db.session.query(CalendarAssignment.instructor_name).filter(
+        CalendarAssignment.instructor_name.isnot(None),
+        CalendarAssignment.instructor_name != ''
+    ).distinct().all()
+    instructors = [i[0] for i in instructors if i[0]]
     
-    logger.info(f"DEBUG: Instructores en CompetencyRecord: {instructors}")
+    logger.info(f"DEBUG: Instructores en CalendarAssignment: {instructors}")
     
     # Obtener usuarios con rol de gestor e instructor (excluir super admin y administrador)
     user_instructors = Users.query.filter(Users.rol.in_(['gestor', 'instructor'])).all()
@@ -187,6 +190,51 @@ def home():
         current_user_asignatura=current_asignatura,
         equipo_ids=equipo_ids,
         all_instructors=all_instructors)
+
+
+@main_bp.route("/get_program_competencies")
+@login_required
+def get_program_competencies():
+    program_id = request.args.get('program_id', type=int)
+    if not program_id:
+        return jsonify({"success": True, "competencies": []})
+
+    program = TrainingProgram.query.get(program_id)
+    if not program:
+        return jsonify({"success": False, "error": "Programa no encontrado"}), 404
+
+    records = CompetencyRecord.query.filter_by(training_program_id=program_id).order_by(
+        CompetencyRecord.competencia.asc(),
+        CompetencyRecord.id.asc()
+    ).all()
+
+    seen = set()
+    competencies = []
+    for record in records:
+        if not record.competencia:
+            continue
+
+        key = (
+            (record.competencia or '').strip().lower(),
+            (record.resultado or '').strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+
+        competencies.append({
+            "id": record.id,
+            "competencia": record.competencia,
+            "resultado": record.resultado or "",
+        })
+
+    return jsonify({
+        "success": True,
+        "program_id": program_id,
+        "ficha": program.ficha_number,
+        "program_name": program.program_name,
+        "competencies": competencies,
+    })
 
 
 @main_bp.route("/gestor/equipo", methods=["GET"])

@@ -24,7 +24,6 @@ Hola {nombre_usuario},
 Se ha creado una cuenta para ti en el Sistema de Competencias SENA.
 
 Tu usuario para iniciar sesion es: {login_username}
-(este corresponde al texto antes del @ de tu correo y aplica para todos los roles, incluido super admin).
 
 Para activar tu acceso, define tu contraseña en el siguiente enlace:
 {reset_url}

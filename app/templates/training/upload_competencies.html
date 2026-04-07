@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Cargar Competencias por Excel{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-9">
+        <div class="card mt-4">
+            <div class="card-header">
+                <h4>Cargar Competencias y Resultados de Aprendizaje</h4>
+                {% if read_only %}
+                <small class="text-muted">Vista de solo lectura para gestor</small>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>Formato del Excel:</strong> puedes subir archivos <code>.xls</code> o <code>.xlsx</code>.
+                    Cada fila debe traer la <strong>ficha o nombre del programa</strong> en <code>A</code>, la <strong>competencia</strong> en <code>B</code>
+                    y el <strong>resultado de aprendizaje</strong> en <code>C</code>.
+                    Luego, al asignar competencias en el calendario, podrás seleccionar las opciones cargadas para esa ficha.
+                </div>
+
+                <div class="table-responsive mb-4">
+                    <table class="table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Columna</th>
+                                <th>Dato esperado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>A</code></td>
+                                <td>Número de ficha o nombre del programa</td>
+                            </tr>
+                            <tr>
+                                <td><code>B</code></td>
+                                <td>Competencia</td>
+                            </tr>
+                            <tr>
+                                <td><code>C</code></td>
+                                <td>Resultado de aprendizaje</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <form method="POST" action="{{ url_for('training.upload_competencies') }}" enctype="multipart/form-data">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-8">
+                            <label for="excel_file" class="form-label">Archivo Excel</label>
+                            <input type="file" class="form-control" id="excel_file" name="excel_file" accept=".xls,.xlsx" required {% if read_only %}disabled{% endif %}>
+                        </div>
+                        <div class="col-md-4">
+                            {% if read_only %}
+                            <button type="button" class="btn btn-secondary w-100" disabled>Cargar Excel (Solo lectura)</button>
+                            {% else %}
+                            <button type="submit" class="btn btn-success w-100">Cargar Competencias</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </form>
+
+                <div class="mt-4">
+                    <a href="{{ url_for('main.home') }}" class="btn btn-secondary">Volver al Inicio</a>
+                    <a href="{{ url_for('training.programs') }}" class="btn btn-outline-secondary">Ver Programas</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

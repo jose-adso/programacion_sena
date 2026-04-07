@@ -393,6 +393,15 @@
                 </div>
                 
                 <input type="hidden" id="comp-assignment-id">
+                <input type="hidden" id="comp-program-id">
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Competencias cargadas para esta ficha:</label>
+                    <select id="comp-catalog-select" class="form-select" onchange="applySelectedCatalogCompetency('comp')">
+                        <option value="">-- Seleccionar competencia cargada por Excel --</option>
+                    </select>
+                    <div class="form-text">Puedes seleccionar una competencia ya cargada para esta ficha o escribirla manualmente.</div>
+                </div>
                 
                 <div class="mb-3">
                     <label class="form-label fw-bold">Competencia:</label>
@@ -471,13 +480,20 @@
                 
                 <div class="mb-3">
                     <label class="form-label fw-bold">Programa/Ficha:</label>
-                    <select id="weekly-program" class="form-select">
+                    <select id="weekly-program" class="form-select" onchange="handleWeeklyProgramChange()">
                         <option value="">-- Seleccionar Ficha --</option>
                         {% if programs %}
                         {% for program in programs %}
                         <option value="{{ program.id }}">{{ program.ficha_number }} - {{ program.program_name }}</option>
                         {% endfor %}
                         {% endif %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Competencias cargadas para esta ficha:</label>
+                    <select id="weekly-catalog-select" class="form-select" onchange="applySelectedCatalogCompetency('weekly')">
+                        <option value="">-- Seleccionar competencia cargada por Excel --</option>
                     </select>
                 </div>
                 
@@ -1268,6 +1284,97 @@ function deleteAssignment() {
 
 // Funciones para Competencias y Resultados
 let currentCompetencyAssignments = [];
+const programCompetencyCatalog = { comp: [], weekly: [] };
+
+function getCatalogSelectId(prefix) {
+    return prefix === 'weekly' ? 'weekly-catalog-select' : 'comp-catalog-select';
+}
+
+function getCompetenciaFieldId(prefix) {
+    return prefix === 'weekly' ? 'weekly-competencia' : 'comp-competencia';
+}
+
+function getResultadoFieldId(prefix) {
+    return prefix === 'weekly' ? 'weekly-resultado' : 'comp-resultado';
+}
+
+function resetProgramCompetencySelect(prefix) {
+    const select = document.getElementById(getCatalogSelectId(prefix));
+    if (!select) return;
+
+    select.innerHTML = '<option value="">-- Seleccionar competencia cargada por Excel --</option>';
+    programCompetencyCatalog[prefix] = [];
+}
+
+function applySelectedCatalogCompetency(prefix) {
+    const select = document.getElementById(getCatalogSelectId(prefix));
+    const competenciaField = document.getElementById(getCompetenciaFieldId(prefix));
+    const resultadoField = document.getElementById(getResultadoFieldId(prefix));
+
+    if (!select || !competenciaField || !resultadoField || !select.value) {
+        return;
+    }
+
+    const selectedItem = (programCompetencyCatalog[prefix] || []).find(item => String(item.id) === String(select.value));
+    if (!selectedItem) {
+        return;
+    }
+
+    competenciaField.value = selectedItem.competencia || '';
+    resultadoField.value = selectedItem.resultado || '';
+}
+
+function loadProgramCompetencies(prefix, programId, currentCompetencia = '', currentResultado = '') {
+    resetProgramCompetencySelect(prefix);
+    if (!programId) {
+        return;
+    }
+
+    fetch(`/get_program_competencies?program_id=${encodeURIComponent(programId)}`)
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById(getCatalogSelectId(prefix));
+            if (!select || !data.success) {
+                return;
+            }
+
+            const competencies = data.competencies || [];
+            programCompetencyCatalog[prefix] = competencies;
+
+            if (competencies.length === 0) {
+                select.innerHTML = '<option value="">-- Esta ficha no tiene competencias cargadas por Excel --</option>';
+                return;
+            }
+
+            select.innerHTML = '<option value="">-- Seleccionar competencia cargada por Excel --</option>';
+
+            competencies.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = item.competencia && item.competencia.length > 100
+                    ? item.competencia.slice(0, 100) + '...'
+                    : (item.competencia || 'Competencia sin texto');
+
+                if ((item.competencia || '') === (currentCompetencia || '') && (item.resultado || '') === (currentResultado || '')) {
+                    option.selected = true;
+                }
+
+                select.appendChild(option);
+            });
+
+            if (select.value) {
+                applySelectedCatalogCompetency(prefix);
+            }
+        })
+        .catch(error => {
+            console.error('Error al cargar competencias de la ficha:', error);
+        });
+}
+
+function handleWeeklyProgramChange() {
+    const programId = document.getElementById('weekly-program').value;
+    loadProgramCompetencies('weekly', programId);
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     // Ya se cargó el calendario arriba
@@ -1433,8 +1540,11 @@ function openCompetencyModal(instructor, subject, ficha, programId, assignmentId
     document.getElementById('comp-subject').textContent = subject;
     document.getElementById('comp-ficha').textContent = ficha;
     document.getElementById('comp-assignment-id').value = assignmentId;
+    document.getElementById('comp-program-id').value = programId || '';
     document.getElementById('comp-competencia').value = competencia || '';
     document.getElementById('comp-resultado').value = resultado || '';
+
+    loadProgramCompetencies('comp', programId, competencia || '', resultado || '');
     
     const modal = new bootstrap.Modal(document.getElementById('competencyModal'));
     modal.show();
@@ -1529,6 +1639,7 @@ function openWeeklyCompetencyModal() {
     document.getElementById('weekly-program').value = '';
     document.getElementById('weekly-competencia').value = '';
     document.getElementById('weekly-resultado').value = '';
+    resetProgramCompetencySelect('weekly');
     
     const modal = new bootstrap.Modal(document.getElementById('weeklyCompetencyModal'));
     modal.show();
@@ -1596,7 +1707,11 @@ function updateWeeklySubjectOptions() {
         // Seleccionar automáticamente el programa
         if (data.program_id) {
             programSelect.value = data.program_id;
+            handleWeeklyProgramChange();
         }
+    } else {
+        programSelect.value = '';
+        resetProgramCompetencySelect('weekly');
     }
 }
 

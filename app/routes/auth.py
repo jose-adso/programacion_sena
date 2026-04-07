@@ -120,7 +120,6 @@ Hola {user.nombre},
 Has solicitado recuperar tu contrasena en el Sistema de Competencias SENA.
 
 Tu usuario para iniciar sesion es: {user.login_username}
-(este corresponde al texto antes del @ de tu correo y aplica para todos los roles, incluido super admin).
 
 O puedes hacer clic en el siguiente enlace para restablecer tu contrasena:
 {reset_url}
