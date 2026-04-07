@@ -34,8 +34,8 @@ def create_app():
     }
 
     # Configuración de Flask-Mail
-    mail_username = os.getenv("MAIL_USERNAME", "jhoset40@gmail.com").strip()
-    mail_password = os.getenv("MAIL_PASSWORD", "szdbqxqdhmnsaqei").strip().replace(" ", "")
+    mail_username = os.getenv("MAIL_USERNAME", "ruedamoncadam@gmail.com").strip()
+    mail_password = os.getenv("MAIL_PASSWORD", "fhsa hhek fnxg axlq").strip().replace(" ", "")
 
     app.config["MAIL_SERVER"] = "smtp.gmail.com"
     app.config["MAIL_PORT"] = 587
@@ -105,10 +105,29 @@ def create_app():
 
 
 def ensure_training_program_columns():
-    """Agrega columnas nuevas de forma segura cuando no existe un sistema de migraciones."""
+    """Agrega columnas nuevas y ajusta tamaños cuando no existe un sistema de migraciones."""
     inspector = inspect(db.engine)
-    columns = {column["name"] for column in inspector.get_columns("training_program")}
+    table_names = set(inspector.get_table_names())
+
+    if "training_program" not in table_names:
+        return
+
+    columns = {column["name"]: column for column in inspector.get_columns("training_program")}
 
     if "scheduled_days" not in columns:
         db.session.execute(text("ALTER TABLE training_program ADD COLUMN scheduled_days VARCHAR(100)"))
         db.session.commit()
+
+    program_name_column = columns.get("program_name")
+    if program_name_column is not None:
+        current_length = getattr(program_name_column["type"], "length", None)
+        if current_length is not None and current_length < 255:
+            db.session.execute(text("ALTER TABLE training_program ALTER COLUMN program_name TYPE VARCHAR(255)"))
+            db.session.commit()
+
+    location_column = columns.get("location_municipality")
+    if location_column is not None:
+        current_length = getattr(location_column["type"], "length", None)
+        if current_length is not None and current_length < 150:
+            db.session.execute(text("ALTER TABLE training_program ALTER COLUMN location_municipality TYPE VARCHAR(150)"))
+            db.session.commit()

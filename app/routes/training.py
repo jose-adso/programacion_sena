@@ -2,7 +2,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from app.models.training import TrainingProgram
 from app import db
-from datetime import datetime
+from datetime import datetime, date
+from openpyxl import load_workbook
+from openpyxl.utils.datetime import from_excel
+import re
+import unicodedata
+import xlrd
 
 training_bp = Blueprint("training", __name__)
 
@@ -16,6 +21,58 @@ WEEK_DAYS = [
     ("domingo", "Domingo"),
 ]
 
+DEFAULT_EXCEL_COLUMNS = {
+    "ficha_number": 4,           # Columna E
+    "start_date": 12,            # Columna M
+    "end_date": 13,              # Columna N
+    "program_name": 26,          # Columna AA
+    "location_municipality": 32, # Columna AG
+}
+
+REQUIRED_EXCEL_FIELDS = set(DEFAULT_EXCEL_COLUMNS.keys())
+
+EXCEL_HEADER_ALIASES = {
+    "ficha_number": {
+        "numero de ficha",
+        "número de ficha",
+        "numero ficha",
+        "ficha",
+        "nro ficha",
+        "no ficha",
+        "no de ficha",
+        "n ficha",
+        "codigo ficha",
+        "cod ficha",
+    },
+    "start_date": {
+        "fecha de inicio",
+        "fecha inicio",
+        "inicio",
+    },
+    "end_date": {
+        "fecha de termino",
+        "fecha termino",
+        "fecha de terminacion",
+        "fecha terminacion",
+        "fecha fin",
+        "fin",
+    },
+    "program_name": {
+        "nombre del programa",
+        "programa de formacion",
+        "programa de formación",
+        "nombre programa",
+        "programa",
+    },
+    "location_municipality": {
+        "lugar o municipio",
+        "amb lugar o municipio",
+        "municipio",
+        "lugar de formacion",
+        "lugar de formación",
+    },
+}
+
 
 def normalize_scheduled_days(selected_days):
     day_order = {value: index for index, (value, _) in enumerate(WEEK_DAYS)}
@@ -24,6 +81,239 @@ def normalize_scheduled_days(selected_days):
         if day in day_order and day not in unique_days:
             unique_days.append(day)
     return sorted(unique_days, key=lambda day: day_order[day])
+
+
+def normalize_excel_text(value):
+    if value is None:
+        return ""
+
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return format(value, "f").rstrip("0").rstrip(".")
+
+    if isinstance(value, int):
+        return str(value)
+
+    return str(value).strip()
+
+
+def normalize_ficha_number(value):
+    ficha_number = normalize_excel_text(value).replace(" ", "")
+    if ficha_number.endswith(".0") and ficha_number[:-2].isdigit():
+        ficha_number = ficha_number[:-2]
+    return ficha_number
+
+
+def parse_excel_date(value, datemode=None):
+    if value is None or str(value).strip() == "":
+        return None
+
+    if isinstance(value, datetime):
+        return value.date()
+
+    if isinstance(value, date):
+        return value
+
+    if isinstance(value, (int, float)):
+        try:
+            if datemode is not None:
+                return xlrd.xldate_as_datetime(value, datemode).date()
+            converted = from_excel(value)
+            return converted.date() if isinstance(converted, datetime) else converted
+        except Exception:
+            return None
+
+    text_value = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text_value, fmt).date()
+        except ValueError:
+            continue
+
+    return None
+
+
+def normalize_header_key(value):
+    text = normalize_excel_text(value)
+    if not text:
+        return ""
+
+    normalized = unicodedata.normalize("NFKD", text)
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
+    return " ".join(normalized.split())
+
+
+def find_header_row(rows, max_scan_rows=20):
+    for row_number, row in enumerate(rows[:max_scan_rows], start=1):
+        detected_columns = set()
+
+        for cell_value in row:
+            header_key = normalize_header_key(cell_value)
+            if not header_key:
+                continue
+
+            for field_name, aliases in EXCEL_HEADER_ALIASES.items():
+                if field_name in detected_columns:
+                    continue
+
+                if any(alias == header_key or alias in header_key for alias in aliases):
+                    detected_columns.add(field_name)
+                    break
+
+        if REQUIRED_EXCEL_FIELDS.issubset(detected_columns):
+            return row_number
+
+    return None
+
+
+def row_has_valid_program_data(row, datemode):
+    ficha_number = normalize_ficha_number(row[DEFAULT_EXCEL_COLUMNS["ficha_number"]] if len(row) > DEFAULT_EXCEL_COLUMNS["ficha_number"] else None)
+    program_name = normalize_excel_text(row[DEFAULT_EXCEL_COLUMNS["program_name"]] if len(row) > DEFAULT_EXCEL_COLUMNS["program_name"] else None)
+    location_municipality = normalize_excel_text(row[DEFAULT_EXCEL_COLUMNS["location_municipality"]] if len(row) > DEFAULT_EXCEL_COLUMNS["location_municipality"] else None)
+    start_date = parse_excel_date(row[DEFAULT_EXCEL_COLUMNS["start_date"]] if len(row) > DEFAULT_EXCEL_COLUMNS["start_date"] else None, datemode)
+    end_date = parse_excel_date(row[DEFAULT_EXCEL_COLUMNS["end_date"]] if len(row) > DEFAULT_EXCEL_COLUMNS["end_date"] else None, datemode)
+
+    if ficha_number.lower() in {"número de ficha", "numero de ficha", "ficha", "numeroficha"}:
+        return False
+
+    if program_name.lower() in {"nombre del programa", "programa", "programa de formación", "programa de formacion"}:
+        return False
+
+    return bool(
+        ficha_number
+        and program_name
+        and location_municipality
+        and start_date
+        and end_date
+        and re.fullmatch(r"\d{5,20}", ficha_number)
+    )
+
+
+def load_excel_rows(excel_file, filename):
+    sheets_data = []
+
+    if filename.endswith(".xls"):
+        file_bytes = excel_file.read()
+        excel_file.stream.seek(0)
+        workbook = xlrd.open_workbook(file_contents=file_bytes)
+        for sheet in workbook.sheets():
+            rows = [sheet.row_values(row_index) for row_index in range(sheet.nrows)]
+            sheets_data.append((sheet.name, rows, workbook.datemode))
+    else:
+        excel_file.stream.seek(0)
+        workbook = load_workbook(excel_file, data_only=True)
+        try:
+            for sheet in workbook.worksheets:
+                rows = list(sheet.iter_rows(values_only=True))
+                sheets_data.append((sheet.title, rows, None))
+        finally:
+            workbook.close()
+
+    if not sheets_data:
+        raise ValueError("El Excel no contiene hojas con datos")
+
+    best_match = None
+
+    for sheet_name, rows, datemode in sheets_data:
+        header_row_number = find_header_row(rows)
+        valid_rows = 0
+
+        for row_index, row in enumerate(rows, start=1):
+            if header_row_number and row_index <= header_row_number:
+                continue
+            if row_has_valid_program_data(row, datemode):
+                valid_rows += 1
+
+        score = (1 if header_row_number else 0, valid_rows)
+        if best_match is None or score > best_match[0]:
+            best_match = (score, rows, datemode, header_row_number or 0, sheet_name)
+
+    if best_match and best_match[0][1] > 0:
+        _, rows, datemode, header_row_number, sheet_name = best_match
+        return rows, datemode, header_row_number, DEFAULT_EXCEL_COLUMNS.copy(), sheet_name
+
+    raise ValueError(
+        "No se encontró una hoja válida para importar. El Excel debe usar la ficha en E, fechas en M y N, nombre del programa en AA y lugar o municipio en AG."
+    )
+
+
+def import_programs_from_excel(excel_file):
+    filename = (excel_file.filename or "").lower()
+    if not filename.endswith((".xls", ".xlsx")):
+        raise ValueError("El archivo debe ser un Excel válido (.xls o .xlsx)")
+
+    existing_programs = {
+        normalize_ficha_number(program.ficha_number): program
+        for program in TrainingProgram.query.all()
+        if program.ficha_number is not None
+    }
+    imported_count = 0
+    updated_count = 0
+    skipped_rows = []
+    updated_rows = []
+
+    rows, datemode, header_row_number, column_map, sheet_name = load_excel_rows(excel_file, filename)
+
+    for row_index, row in enumerate(rows, start=1):
+        if header_row_number and row_index <= header_row_number:
+            continue
+
+        ficha_number_raw = row[column_map["ficha_number"]] if len(row) > column_map["ficha_number"] else None
+        start_date_raw = row[column_map["start_date"]] if len(row) > column_map["start_date"] else None
+        end_date_raw = row[column_map["end_date"]] if len(row) > column_map["end_date"] else None
+        program_name_raw = row[column_map["program_name"]] if len(row) > column_map["program_name"] else None
+        location_raw = row[column_map["location_municipality"]] if len(row) > column_map["location_municipality"] else None
+
+        if all(value in (None, "") for value in (ficha_number_raw, program_name_raw, location_raw, start_date_raw, end_date_raw)):
+            continue
+
+        ficha_number = normalize_ficha_number(ficha_number_raw)
+        program_name = normalize_excel_text(program_name_raw)
+        location_municipality = normalize_excel_text(location_raw)
+        start_date = parse_excel_date(start_date_raw, datemode)
+        end_date = parse_excel_date(end_date_raw, datemode)
+
+        if ficha_number.lower() in {"número de ficha", "numero de ficha", "ficha", "numeroficha"}:
+            continue
+
+        if program_name.lower() in {"nombre del programa", "programa", "programa de formación", "programa de formacion"}:
+            continue
+
+        if not ficha_number or not program_name or not location_municipality or not start_date or not end_date:
+            skipped_rows.append(row_index)
+            continue
+
+        if not re.fullmatch(r"\d{5,20}", ficha_number):
+            skipped_rows.append(row_index)
+            continue
+
+        existing_program = existing_programs.get(ficha_number)
+        if existing_program:
+            existing_program.program_name = program_name
+            existing_program.classroom = "centro"
+            existing_program.location_municipality = location_municipality
+            existing_program.start_date = start_date
+            existing_program.end_date = end_date
+            existing_program.updated_at = datetime.utcnow()
+            updated_rows.append(row_index)
+            updated_count += 1
+            continue
+
+        new_program = TrainingProgram(
+            ficha_number=ficha_number,
+            program_name=program_name,
+            classroom="centro",
+            location_municipality=location_municipality,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        db.session.add(new_program)
+        existing_programs[ficha_number] = new_program
+        imported_count += 1
+
+    return imported_count, updated_count, skipped_rows, updated_rows, sheet_name
 
 @training_bp.route("/programs")
 @login_required
@@ -50,6 +340,40 @@ def add_program():
         return redirect(url_for("training.programs"))
     
     if request.method == "POST":
+        submit_type = request.form.get("submit_type", "manual")
+
+        if submit_type == "excel":
+            excel_file = request.files.get("excel_file")
+            if not excel_file or not excel_file.filename:
+                flash("Selecciona un archivo de Excel para cargar las fichas", "danger")
+                return redirect(url_for("training.add_program"))
+
+            try:
+                imported_count, updated_count, skipped_rows, updated_rows, sheet_name = import_programs_from_excel(excel_file)
+                if imported_count == 0 and updated_count == 0:
+                    flash("No se importaron fichas. Revisa que el Excel tenga encabezados válidos y datos completos por fila.", "warning")
+                else:
+                    db.session.commit()
+                    flash(
+                        f"Carga completada desde la hoja '{sheet_name}' usando E, M, N, AA y AG: {imported_count} nuevas y {updated_count} actualizadas.",
+                        "success"
+                    )
+
+                if updated_rows:
+                    flash(f"Se actualizaron fichas existentes en las filas: {', '.join(map(str, updated_rows[:15]))}" + ("..." if len(updated_rows) > 15 else ""), "info")
+
+                if skipped_rows:
+                    flash(f"Se omitieron filas incompletas o inválidas: {', '.join(map(str, skipped_rows[:15]))}" + ("..." if len(skipped_rows) > 15 else ""), "warning")
+                return redirect(url_for("training.programs"))
+            except ValueError as e:
+                db.session.rollback()
+                flash(str(e), "danger")
+                return redirect(url_for("training.add_program"))
+            except Exception as e:
+                db.session.rollback()
+                flash(f"Error al cargar el Excel de fichas: {str(e)}", "danger")
+                return redirect(url_for("training.add_program"))
+
         ficha_number = request.form.get("ficha_number")
         program_name = request.form.get("program_name")
         classroom = request.form.get("classroom")
@@ -61,10 +385,6 @@ def add_program():
         # Validaciones básicas
         if not ficha_number or not program_name or not start_date or not end_date:
             flash("Todos los campos marcados como obligatorios deben ser completados", "danger")
-            return redirect(url_for("training.add_program"))
-
-        if not scheduled_days:
-            flash("Debes seleccionar al menos un dia de formacion", "danger")
             return redirect(url_for("training.add_program"))
         
         # Verificar si la ficha ya existe
@@ -86,16 +406,15 @@ def add_program():
                 start_date=start_date_obj,
                 end_date=end_date_obj
             )
-            new_program.set_scheduled_days(scheduled_days)
             
             db.session.add(new_program)
             db.session.commit()
             flash(f"Programa de formación '{program_name}' agregado exitosamente", "success")
             return redirect(url_for("training.programs"))
-        except ValueError as e:
+        except ValueError:
             flash("Formato de fecha inválido. Use YYYY-MM-DD", "danger")
             return redirect(url_for("training.add_program"))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error al agregar el programa de formación", "danger")
             return redirect(url_for("training.add_program"))

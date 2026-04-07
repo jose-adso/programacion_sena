@@ -1,16 +1,19 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_required, current_user
 from flask_mail import Message
+from openpyxl import load_workbook
 from app.models.users import Users
 from app import db, mail
 from datetime import datetime, timedelta
 import smtplib
 import random
 import string
+import re
+import xlrd
 from urllib.parse import urljoin
 
 
-def enviar_link_activacion(correo_destino, nombre_usuario, reset_url):
+def enviar_link_activacion(correo_destino, nombre_usuario, login_username, reset_url):
     """Envía al usuario un enlace para definir su contraseña inicial."""
     msg = Message(
         subject="Activa tu cuenta - Sistema de Competencias SENA",
@@ -19,6 +22,9 @@ def enviar_link_activacion(correo_destino, nombre_usuario, reset_url):
 Hola {nombre_usuario},
 
 Se ha creado una cuenta para ti en el Sistema de Competencias SENA.
+
+Tu usuario para iniciar sesion es: {login_username}
+(este corresponde al texto antes del @ de tu correo y aplica para todos los roles, incluido super admin).
 
 Para activar tu acceso, define tu contraseña en el siguiente enlace:
 {reset_url}
@@ -78,6 +84,170 @@ def generar_password_aleatoria(longitud=8):
     random.shuffle(password)
     return ''.join(password)
 
+
+def normalize_excel_text(value):
+    if value is None:
+        return ""
+
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return format(value, "f").rstrip("0").rstrip(".")
+
+    if isinstance(value, int):
+        return str(value)
+
+    return str(value).strip()
+
+
+def normalize_person_name(value):
+    return " ".join(normalize_excel_text(value).split())
+
+
+def extract_email(value):
+    text = normalize_excel_text(value).strip().lower().replace("mailto:", "")
+    if not text:
+        return ""
+
+    match = re.search(r"[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}", text, re.IGNORECASE)
+    return match.group(0).lower() if match else ""
+
+
+def get_excel_row_value(row, index):
+    if len(row) <= index:
+        return None
+
+    cell = row[index]
+    if hasattr(cell, "value"):
+        hyperlink = getattr(cell, "hyperlink", None)
+        if hyperlink and getattr(hyperlink, "target", None):
+            return hyperlink.target
+        return cell.value
+
+    return cell
+
+
+def iter_instructor_excel_rows(excel_file, filename):
+    if filename.endswith(".xls"):
+        file_bytes = excel_file.read()
+        excel_file.stream.seek(0)
+        workbook = xlrd.open_workbook(file_contents=file_bytes)
+        for sheet in workbook.sheets():
+            for row_index in range(sheet.nrows):
+                yield sheet.name, row_index + 1, sheet.row_values(row_index)
+        return
+
+    excel_file.stream.seek(0)
+    workbook = load_workbook(excel_file, data_only=False)
+    try:
+        for sheet in workbook.worksheets:
+            for row_index, row in enumerate(sheet.iter_rows(), start=1):
+                yield sheet.title, row_index, row
+    finally:
+        workbook.close()
+
+
+def import_instructors_from_excel(excel_file):
+    filename = (excel_file.filename or "").lower()
+    if not filename.endswith((".xls", ".xlsx")):
+        raise ValueError("El archivo debe ser un Excel válido (.xls o .xlsx)")
+
+    existing_users = Users.query.all()
+    existing_users_by_email = {
+        (user.correo or "").strip().lower(): user
+        for user in existing_users
+        if user.correo
+    }
+    existing_users_by_login = {
+        user.login_username: user
+        for user in existing_users
+        if user.correo
+    }
+
+    imported_count = 0
+    updated_count = 0
+    skipped_rows = []
+    duplicate_rows = []
+    email_error_rows = []
+    updated_rows = []
+
+    for sheet_name, row_index, row in iter_instructor_excel_rows(excel_file, filename):
+        nombre_raw = get_excel_row_value(row, 2)   # Columna C
+        correo_raw = get_excel_row_value(row, 5)    # Columna F
+        row_label = f"{sheet_name} fila {row_index}"
+
+        if all(value in (None, "") for value in (nombre_raw, correo_raw)):
+            continue
+
+        nombre = normalize_person_name(nombre_raw)
+        correo = extract_email(correo_raw)
+
+        if nombre.lower() in {"nombre", "nombres", "instructor", "nombre instructor", "nombre del instructor", "apellidos y nombres", "nombre completo"}:
+            continue
+        if normalize_excel_text(correo_raw).strip().lower() in {"correo", "correo electronico", "correo electrónico", "email", "e-mail"}:
+            continue
+
+        if not nombre or not correo:
+            skipped_rows.append(row_label)
+            continue
+
+        login_username = correo.split("@", 1)[0]
+        existing_user = existing_users_by_email.get(correo)
+        login_conflict_user = existing_users_by_login.get(login_username)
+
+        if login_conflict_user and login_conflict_user.correo.strip().lower() != correo:
+            duplicate_rows.append(f"{row_label} (usuario '{login_username}' ya existe)")
+            continue
+
+        target_user = None
+
+        try:
+            with db.session.begin_nested():
+                if existing_user:
+                    existing_user.nombre = nombre
+                    existing_user.rol = "instructor"
+                    existing_user.must_change_password = True
+                    existing_user.generate_recovery_token()
+                    db.session.flush()
+                    target_user = existing_user
+                    updated_count += 1
+                    updated_rows.append(row_label)
+                else:
+                    password = generar_password_aleatoria(8)
+                    new_user = Users(
+                        nombre=nombre,
+                        correo=correo,
+                        telefono="",
+                        direccion="",
+                        password=password,
+                        rol="instructor",
+                        must_change_password=True,
+                        perfil_profesional=""
+                    )
+                    db.session.add(new_user)
+                    db.session.flush()
+
+                    new_user.generate_recovery_token()
+                    db.session.flush()
+                    target_user = new_user
+
+                    existing_users_by_email[correo] = new_user
+                    existing_users_by_login[login_username] = new_user
+                    imported_count += 1
+        except Exception:
+            skipped_rows.append(row_label)
+            continue
+
+        try:
+            reset_url = construir_reset_url(target_user.id, target_user.recovery_token)
+            enviar_link_activacion(correo, target_user.nombre, target_user.login_username, reset_url)
+        except RuntimeError:
+            email_error_rows.append(row_label)
+        except Exception:
+            email_error_rows.append(row_label)
+
+    return imported_count, updated_count, skipped_rows, duplicate_rows, email_error_rows, updated_rows
+
 admin_bp = Blueprint("admin", __name__)
 
 @admin_bp.route("/panel")
@@ -92,12 +262,12 @@ def panel():
         return redirect(url_for("main.home"))
 
     can_manage_users = current_user.rol_activo in ["super admin", "administrador"]
+    visible_roles = ["administrador", "gestor", "instructor"]
 
-    # Si el super admin está actuando como otro rol, solo puede verse a sí mismo para cambiar de rol.
     if can_manage_users or current_user.rol_activo == "gestor":
-        users = Users.query.all()
+        users = Users.query.filter(Users.rol.in_(visible_roles)).all()
     else:
-        users = [current_user]
+        users = [current_user] if current_user.rol in visible_roles else []
 
     return render_template(
         "admin/panel.html",
@@ -130,7 +300,7 @@ def enviar_links_instructores():
             db.session.commit()
 
             reset_url = construir_reset_url(user.id, token)
-            enviar_link_activacion(user.correo, user.nombre, reset_url)
+            enviar_link_activacion(user.correo, user.nombre, user.login_username, reset_url)
             sent += 1
         except RuntimeError:
             db.session.rollback()
@@ -223,10 +393,65 @@ def registrar():
         return redirect(url_for("admin.registrar"))
     
     if request.method == "POST":
-        nombre = request.form.get("nombre")
-        correo = request.form.get("correo")
+        submit_type = request.form.get("submit_type", "manual")
+
+        if submit_type == "excel":
+            excel_file = request.files.get("excel_file")
+            if not excel_file or not excel_file.filename:
+                flash("Selecciona un archivo Excel para registrar instructores", "danger")
+                return redirect(url_for("admin.registrar"))
+
+            try:
+                imported_count, updated_count, skipped_rows, duplicate_rows, email_error_rows, updated_rows = import_instructors_from_excel(excel_file)
+                db.session.commit()
+
+                if imported_count or updated_count:
+                    flash(
+                        f"Carga completada: {imported_count} instructores nuevos y {updated_count} actualizados/reenviados desde Excel.",
+                        "success"
+                    )
+                else:
+                    flash("No se registraron instructores. Revisa que el Excel tenga nombres en C y correos válidos en F.", "warning")
+
+                if updated_rows:
+                    flash(
+                        f"Se actualizaron o reenviaron accesos en: {', '.join(updated_rows[:10])}" + ("..." if len(updated_rows) > 10 else ""),
+                        "info"
+                    )
+
+                if duplicate_rows:
+                    flash(
+                        f"No se cargaron filas por correo o usuario ya existente: {', '.join(duplicate_rows[:10])}" + ("..." if len(duplicate_rows) > 10 else ""),
+                        "warning"
+                    )
+
+                if skipped_rows:
+                    flash(
+                        f"Se omitieron filas incompletas o inválidas: {', '.join(skipped_rows[:10])}" + ("..." if len(skipped_rows) > 10 else ""),
+                        "warning"
+                    )
+
+                if email_error_rows:
+                    flash(
+                        f"Estos instructores sí quedaron registrados/actualizados, pero no se pudo enviar el correo en: {', '.join(email_error_rows[:10])}" + ("..." if len(email_error_rows) > 10 else ""),
+                        "warning"
+                    )
+
+                return redirect(url_for("admin.panel"))
+            except ValueError as e:
+                db.session.rollback()
+                flash(str(e), "danger")
+                return redirect(url_for("admin.registrar"))
+            except Exception:
+                db.session.rollback()
+                flash("Error al cargar instructores desde Excel", "danger")
+                return redirect(url_for("admin.registrar"))
+
+        nombre = (request.form.get("nombre") or "").strip()
+        correo = (request.form.get("correo") or "").strip().lower()
         rol = request.form.get("rol")
         perfil_profesional = request.form.get("perfil_profesional", "").strip()
+        login_username = correo.split("@", 1)[0] if "@" in correo else ""
         
         # Generar contraseña base aleatoria (no se envía por correo)
         password = generar_password_aleatoria(8)
@@ -247,12 +472,20 @@ def registrar():
             flash("No tienes permiso para registrar usuarios", "danger")
             return redirect(url_for("admin.panel"))
         
-        # Check if user already exists
-        existing_user = Users.query.filter_by(nombre=nombre).first()
-        if existing_user:
-            flash("El nombre de usuario ya existe", "danger")
+        if not nombre or not correo or not login_username:
+            flash("Debes ingresar un nombre y un correo válido", "danger")
             return redirect(url_for("admin.registrar"))
-        
+
+        existing_user = Users.query.filter(db.func.lower(Users.nombre) == nombre.lower()).first()
+        if existing_user:
+            flash("Ya existe un usuario con ese nombre", "danger")
+            return redirect(url_for("admin.registrar"))
+
+        existing_login_user = Users.query.filter(db.func.lower(Users.correo).like(f"{login_username}@%")).first()
+        if existing_login_user:
+            flash(f"Ya existe un usuario cuyo acceso es '{login_username}'. Usa otro correo.", "danger")
+            return redirect(url_for("admin.registrar"))
+
         existing_email = Users.query.filter_by(correo=correo).first()
         if existing_email:
             flash("El correo electrónico ya está registrado", "danger")
@@ -278,8 +511,11 @@ def registrar():
                 token = new_user.generate_recovery_token()
                 db.session.commit()
                 reset_url = construir_reset_url(new_user.id, token)
-                enviar_link_activacion(correo, nombre, reset_url)
-                flash(f"Usuario {nombre} registrado exitosamente como {rol}. Se envió enlace de activación al correo {correo}", "success")
+                enviar_link_activacion(correo, nombre, new_user.login_username, reset_url)
+                flash(
+                    f"Usuario {nombre} registrado exitosamente como {rol}. Su usuario de acceso es '{new_user.login_username}' y se envió enlace de activación al correo {correo}",
+                    "success"
+                )
             except RuntimeError as e:
                 flash(f"Usuario {nombre} registrado exitosamente como {rol}. {e}", "warning")
             

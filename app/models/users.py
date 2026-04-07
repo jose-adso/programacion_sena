@@ -48,6 +48,14 @@ class Users(db.Model, UserMixin):
             hoy = datetime.now().date()
             return self.temp_rol_start <= hoy <= self.temp_rol_end
         return False
+
+    @property
+    def login_username(self):
+        """Usuario de inicio de sesión derivado del correo (texto antes del @)."""
+        correo = (self.correo or "").strip().lower()
+        if "@" in correo:
+            return correo.split("@", 1)[0]
+        return (self.nombre or "").strip().lower()
     
     @property
     def password(self):

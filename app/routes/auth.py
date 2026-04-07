@@ -20,15 +20,32 @@ def password_is_strong(password):
     return True
 
 
+def find_user_for_login(identifier):
+    """Permite iniciar sesión con el prefijo del correo (antes del @), con el correo completo o con el nombre legado."""
+    normalized_identifier = (identifier or "").strip().lower()
+    if not normalized_identifier:
+        return None
+
+    user = Users.query.filter(db.func.lower(Users.correo).like(f"{normalized_identifier}@%")).first()
+    if user:
+        return user
+
+    user = Users.query.filter(db.func.lower(Users.correo) == normalized_identifier).first()
+    if user:
+        return user
+
+    return Users.query.filter(db.func.lower(Users.nombre) == normalized_identifier).first()
+
+
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for("main.home"))
 
     if request.method == "POST":
-        username = request.form.get("username")
+        username = (request.form.get("username") or "").strip()
         password = request.form.get("password")
-        user = Users.query.filter_by(nombre=username).first()
+        user = find_user_for_login(username)
 
         if user and user.check_password(password):
             login_user(user)
@@ -101,6 +118,9 @@ def recover_request():
 Hola {user.nombre},
 
 Has solicitado recuperar tu contrasena en el Sistema de Competencias SENA.
+
+Tu usuario para iniciar sesion es: {user.login_username}
+(este corresponde al texto antes del @ de tu correo y aplica para todos los roles, incluido super admin).
 
 O puedes hacer clic en el siguiente enlace para restablecer tu contrasena:
 {reset_url}

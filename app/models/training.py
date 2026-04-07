@@ -4,9 +4,9 @@ from datetime import datetime
 class TrainingProgram(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     ficha_number = db.Column(db.String(20), unique=True, nullable=False)
-    program_name = db.Column(db.String(100), nullable=False)
+    program_name = db.Column(db.String(255), nullable=False)
     classroom = db.Column(db.String(50))
-    location_municipality = db.Column(db.String(100))  # AMB LUGAR O MUNICIPIO
+    location_municipality = db.Column(db.String(150))  # AMB LUGAR O MUNICIPIO
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
     scheduled_days = db.Column(db.String(100), nullable=True)  # Ej: lunes,martes,miercoles

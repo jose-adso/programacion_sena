@@ -44,7 +44,6 @@
         </thead>
         <tbody>
             {% for user in users %}
-            {% if user.rol != 'super admin' or is_base_super_admin %}
             <tr>
                 <td>{{ user.id }}</td>
                 <td>{{ user.nombre }}</td>
@@ -83,7 +82,10 @@
                     {% endif %}
                 </td>
             </tr>
-            {% endif %}
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center text-muted">No hay usuarios con rol administrador, gestor o instructor para mostrar.</td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>

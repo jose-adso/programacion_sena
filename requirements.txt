@@ -4,3 +4,5 @@ Flask-SQLAlchemy
 Flask-Mail
 Werkzeug
 psycopg2-binary
+openpyxl
+xlrd
