@@ -16,22 +16,10 @@
     </p>
     <p class="text-muted">Al registrar un usuario se enviará un enlace de activación al correo para definir la contraseña inicial. El usuario de acceso será automáticamente el texto antes del <code>@</code> del correo para todos los roles, incluido super admin.</p>
     
-    <div class="alert alert-info">
-        <strong>Cargar instructores por Excel:</strong> puedes subir archivos <code>.xls</code> o <code>.xlsx</code>. Se leerá el <strong>nombre</strong> desde la columna <code>C</code> y el <strong>correo</strong> desde la columna <code>F</code>, fila por fila. Todos se crearán con rol <code>instructor</code> y recibirán el correo con su usuario y enlace para asignar contraseña.
-    </div>
-    
     <div class="mb-4">
         <a href="{{ url_for('admin.panel') }}" class="btn btn-secondary">Volver al Panel</a>
         <a href="{{ url_for('auth.logout') }}" class="btn btn-danger">Cerrar Sesión</a>
     </div>
-    
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }}">{{ message }}</div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
     
     {% if not read_only %}
     <form method="POST" action="{{ url_for('admin.registrar') }}" enctype="multipart/form-data" class="row g-3 mb-4">

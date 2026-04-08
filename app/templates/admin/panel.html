@@ -21,16 +21,19 @@
         <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Cerrar Sesión</a>
     </div>
     
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }}">{{ message }}</div>
-            {% endfor %}
-        {% endif %}
-    {% endwith %}
-    
     <h2>Lista de Usuarios</h2>
-    <table class="table table-striped">
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <input
+                type="text"
+                id="user-filter-input"
+                class="form-control"
+                placeholder="Filtrar por nombre, correo, perfil o rol..."
+                oninput="filterUsersTable()"
+            >
+        </div>
+    </div>
+    <table class="table table-striped" id="users-table">
         <thead>
             <tr>
                 <th>ID</th>
@@ -44,7 +47,7 @@
         </thead>
         <tbody>
             {% for user in users %}
-            <tr>
+            <tr class="user-row">
                 <td>{{ user.id }}</td>
                 <td>{{ user.nombre }}</td>
                 <td>{{ user.correo }}</td>
@@ -147,6 +150,17 @@
 
 <script>
 let usuarioIdActual = null;
+
+function filterUsersTable() {
+    const input = document.getElementById('user-filter-input');
+    const filter = (input ? input.value : '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#users-table tbody tr.user-row');
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = !filter || text.includes(filter) ? '' : 'none';
+    });
+}
 
 function openCambiarRolModal(userId, nombre, rol) {
     usuarioIdActual = userId;

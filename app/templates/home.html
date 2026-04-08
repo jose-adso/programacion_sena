@@ -241,18 +241,6 @@
                 </div>
             </div>
 
-            {% if current_user.rol_activo == 'super admin' %}
-            <!-- Cambios de contraseña recientes - solo super admin -->
-            <div class="card mb-3">
-                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="bi bi-shield-lock"></i> Cambios de Contraseña</h5>
-                    <small id="pwd-mes-label" class="text-white-50"></small>
-                </div>
-                <div class="card-body p-2" id="pwd-container">
-                    <p class="text-muted small">Cargando...</p>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </div>
     
@@ -397,10 +385,9 @@
 
                 <div class="mb-3">
                     <label class="form-label fw-bold">Competencias cargadas para esta ficha:</label>
-                    <select id="comp-catalog-select" class="form-select" onchange="applySelectedCatalogCompetency('comp')">
-                        <option value="">-- Seleccionar competencia cargada por Excel --</option>
+                    <select id="comp-catalog-select" class="form-select" multiple size="8" onchange="applySelectedCatalogCompetency('comp')">
                     </select>
-                    <div class="form-text">Puedes seleccionar una competencia ya cargada para esta ficha o escribirla manualmente.</div>
+                    <div class="form-text">Ahora puede seleccionar varias competencias con <strong>Ctrl + clic</strong>. Las opciones en verde ya fueron guardadas previamente.</div>
                 </div>
                 
                 <div class="mb-3">
@@ -472,7 +459,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-bold">Seleccionar Materia:</label>
-                        <select id="weekly-subject" class="form-select">
+                        <select id="weekly-subject" class="form-select" onchange="syncWeeklyExistingCompetencies()">
                             <option value="">-- Seleccionar Materia --</option>
                         </select>
                     </div>
@@ -492,9 +479,19 @@
 
                 <div class="mb-3">
                     <label class="form-label fw-bold">Competencias cargadas para esta ficha:</label>
-                    <select id="weekly-catalog-select" class="form-select" onchange="applySelectedCatalogCompetency('weekly')">
-                        <option value="">-- Seleccionar competencia cargada por Excel --</option>
+                    <select id="weekly-catalog-select" class="form-select" multiple size="8" onchange="applySelectedCatalogCompetency('weekly')">
                     </select>
+                    <div class="form-text">Ahora puede seleccionar varias competencias con <strong>Ctrl + clic</strong>. Las opciones en verde ya fueron guardadas previamente.</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Competencia:</label>
+                    <textarea id="weekly-competencia" class="form-control" rows="3" placeholder="Ej: Aplicar herramientas ofimáticas para la gestión de información..."></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Resultado de Aprendizaje:</label>
+                    <textarea id="weekly-resultado" class="form-control" rows="3" placeholder="Ej: Gestionar información utilizando herramientas ofimáticas según los requerimientos del usuario..."></textarea>
                 </div>
                 
                 <div class="mb-3">
@@ -539,7 +536,6 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCalendar();
     loadAssignmentsPanel();
     loadHorasAsignadas();
-    loadPasswordChanges();
 });
 
 function changeViewMode() {
@@ -1285,6 +1281,8 @@ function deleteAssignment() {
 // Funciones para Competencias y Resultados
 let currentCompetencyAssignments = [];
 const programCompetencyCatalog = { comp: [], weekly: [] };
+const currentSavedCompetencyKeys = { comp: [], weekly: [] };
+const lastCatalogSelectedValues = { comp: [], weekly: [] };
 
 function getCatalogSelectId(prefix) {
     return prefix === 'weekly' ? 'weekly-catalog-select' : 'comp-catalog-select';
@@ -1298,30 +1296,235 @@ function getResultadoFieldId(prefix) {
     return prefix === 'weekly' ? 'weekly-resultado' : 'comp-resultado';
 }
 
+function buildCompetencySelectionKey(competencia, resultado) {
+    return `${(competencia || '').trim().toLowerCase()}|||${(resultado || '').trim().toLowerCase()}`;
+}
+
+function splitCatalogText(value) {
+    const text = (value || '').trim();
+    if (!text) {
+        return [];
+    }
+
+    const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+    const bulletLines = lines.filter(line => line.startsWith('• ') || line.startsWith('- '));
+    if (bulletLines.length > 0 && bulletLines.length === lines.length) {
+        return bulletLines.map(line => line.substring(2).trim()).filter(Boolean);
+    }
+
+    const blocks = text.split(/\n\s*---+\s*\n/g).map(item => item.trim()).filter(Boolean);
+    return blocks.length > 0 ? blocks : [text];
+}
+
+function extractCompetencySelectionKeys(competencia, resultado = '') {
+    const competencias = splitCatalogText(competencia);
+    const resultados = splitCatalogText(resultado);
+    const total = Math.max(competencias.length, resultados.length, 1);
+    const keys = [];
+
+    for (let index = 0; index < total; index++) {
+        const competenciaText = competencias.length === 1
+            ? (competencias[0] || '')
+            : (competencias[index] || '');
+        const resultadoText = resultados.length === 1
+            ? (resultados[0] || '')
+            : (resultados[index] || '');
+        const key = buildCompetencySelectionKey(competenciaText, resultadoText);
+        if (key !== '|||') {
+            keys.push(key);
+        }
+    }
+
+    return [...new Set(keys)];
+}
+
+function formatCatalogTextValues(values) {
+    const uniqueValues = [];
+    const seen = new Set();
+
+    values.forEach(value => {
+        splitCatalogText(value).forEach(part => {
+            const cleanText = (part || '').trim();
+            const cleanKey = cleanText.toLowerCase();
+            if (cleanText && !seen.has(cleanKey)) {
+                seen.add(cleanKey);
+                uniqueValues.push(cleanText);
+            }
+        });
+    });
+
+    if (uniqueValues.length === 0) {
+        return '';
+    }
+
+    return uniqueValues.length === 1
+        ? uniqueValues[0]
+        : uniqueValues.map(value => `• ${value}`).join('\n\n');
+}
+
+function formatCatalogFieldValue(items, fieldName) {
+    return formatCatalogTextValues(items.map(item => item[fieldName] || ''));
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderScrollableLearningResults(resultado, isComplete) {
+    const results = splitCatalogText(resultado);
+    const textClass = isComplete ? 'text-success fw-semibold' : 'text-dark';
+
+    if (results.length === 0) {
+        return '<p class="text-muted small fst-italic">Sin resultado asignado</p>';
+    }
+
+    if (results.length === 1) {
+        return `<p class="small mb-1 ${textClass}" style="white-space: pre-line;">${escapeHtml(results[0])}</p>`;
+    }
+
+    const encodedResults = encodeURIComponent(JSON.stringify(results));
+    return `
+        <div class="learning-result-wheel ${isComplete ? 'is-complete' : ''}" data-results="${encodedResults}" data-index="0" title="Use la rueda del ratón para ver más resultados">
+            <p class="learning-result-wheel__text small mb-1 ${textClass}">${escapeHtml(results[0])}</p>
+            <div class="learning-result-wheel__hint">Resultado 1 de ${results.length} · use la rueda del ratón</div>
+        </div>`;
+}
+
+function initializeLearningResultWheel(container) {
+    if (!container) return;
+
+    container.querySelectorAll('.learning-result-wheel').forEach(card => {
+        card.addEventListener('wheel', function(event) {
+            event.preventDefault();
+
+            let results = [];
+            try {
+                results = JSON.parse(decodeURIComponent(this.dataset.results || '[]'));
+            } catch (error) {
+                console.error('No se pudieron leer los resultados:', error);
+                return;
+            }
+
+            if (!results.length) {
+                return;
+            }
+
+            const direction = event.deltaY > 0 ? 1 : -1;
+            let currentIndex = parseInt(this.dataset.index || '0', 10);
+            currentIndex = (currentIndex + direction + results.length) % results.length;
+            this.dataset.index = String(currentIndex);
+
+            const textEl = this.querySelector('.learning-result-wheel__text');
+            const hintEl = this.querySelector('.learning-result-wheel__hint');
+            if (textEl) {
+                textEl.textContent = results[currentIndex];
+            }
+            if (hintEl) {
+                hintEl.textContent = `Resultado ${currentIndex + 1} de ${results.length} · use la rueda del ratón`;
+            }
+        }, { passive: false });
+    });
+}
+
+function styleCatalogOption(option, isAssigned, isCurrentSelection = false) {
+    if (!option) return;
+
+    option.dataset.assigned = isAssigned ? '1' : '0';
+    option.dataset.currentSelection = isCurrentSelection ? '1' : '0';
+    const isGreen = isCurrentSelection || isAssigned;
+    option.style.color = isGreen ? '#198754' : '#000000';
+    option.style.fontWeight = isGreen ? '600' : '400';
+}
+
+function updateCatalogSelectAppearance(select) {
+    if (!select) return;
+
+    const selectedOptions = Array.from(select.selectedOptions || []);
+    const isGreen = selectedOptions.some(option => (
+        option.dataset.assigned === '1' || option.dataset.currentSelection === '1'
+    ));
+
+    if (isGreen) {
+        select.style.borderColor = '#198754';
+        select.style.boxShadow = '0 0 0 0.15rem rgba(25, 135, 84, 0.18)';
+        select.style.color = '#198754';
+        select.style.fontWeight = '600';
+    } else {
+        select.style.borderColor = '';
+        select.style.boxShadow = '';
+        select.style.color = '#000000';
+        select.style.fontWeight = '400';
+    }
+}
+
 function resetProgramCompetencySelect(prefix) {
     const select = document.getElementById(getCatalogSelectId(prefix));
     if (!select) return;
 
-    select.innerHTML = '<option value="">-- Seleccionar competencia cargada por Excel --</option>';
+    select.innerHTML = '';
+    select.style.borderColor = '';
+    select.style.boxShadow = '';
+    select.style.color = '';
+    select.style.fontWeight = '';
     programCompetencyCatalog[prefix] = [];
+    currentSavedCompetencyKeys[prefix] = [];
+    lastCatalogSelectedValues[prefix] = [];
 }
 
 function applySelectedCatalogCompetency(prefix) {
     const select = document.getElementById(getCatalogSelectId(prefix));
     const competenciaField = document.getElementById(getCompetenciaFieldId(prefix));
     const resultadoField = document.getElementById(getResultadoFieldId(prefix));
+    const previousValues = lastCatalogSelectedValues[prefix] || [];
 
-    if (!select || !competenciaField || !resultadoField || !select.value) {
+    if (!select || !competenciaField || !resultadoField) {
         return;
     }
 
-    const selectedItem = (programCompetencyCatalog[prefix] || []).find(item => String(item.id) === String(select.value));
-    if (!selectedItem) {
+    const selectedValues = Array.from(select.selectedOptions || [])
+        .map(option => String(option.value))
+        .filter(Boolean);
+
+    if (selectedValues.length === 0) {
+        lastCatalogSelectedValues[prefix] = [];
+        updateCatalogSelectAppearance(select);
         return;
     }
 
-    competenciaField.value = selectedItem.competencia || '';
-    resultadoField.value = selectedItem.resultado || '';
+    const selectedItems = (programCompetencyCatalog[prefix] || []).filter(item => (
+        selectedValues.includes(String(item.id))
+    ));
+
+    if (selectedItems.length === 0) {
+        updateCatalogSelectAppearance(select);
+        return;
+    }
+
+    const savedKeys = new Set(currentSavedCompetencyKeys[prefix] || []);
+    const invalidItems = selectedItems.filter(item => {
+        const selectedKey = buildCompetencySelectionKey(item.competencia, item.resultado);
+        return Boolean(item.is_assigned) && !savedKeys.has(selectedKey);
+    });
+
+    if (invalidItems.length > 0) {
+        alert('Esta transversal ya fue dictada para esta ficha. Por eso permanece en verde y no debe seleccionarse de nuevo.');
+        Array.from(select.options).forEach(option => {
+            option.selected = previousValues.includes(String(option.value));
+        });
+        updateCatalogSelectAppearance(select);
+        return;
+    }
+
+    competenciaField.value = formatCatalogFieldValue(selectedItems, 'competencia');
+    resultadoField.value = formatCatalogFieldValue(selectedItems, 'resultado');
+    lastCatalogSelectedValues[prefix] = selectedValues;
+
+    updateCatalogSelectAppearance(select);
 }
 
 function loadProgramCompetencies(prefix, programId, currentCompetencia = '', currentResultado = '') {
@@ -1339,31 +1542,48 @@ function loadProgramCompetencies(prefix, programId, currentCompetencia = '', cur
             }
 
             const competencies = data.competencies || [];
+            const currentKeys = new Set(extractCompetencySelectionKeys(currentCompetencia, currentResultado));
             programCompetencyCatalog[prefix] = competencies;
+            currentSavedCompetencyKeys[prefix] = Array.from(currentKeys);
+            lastCatalogSelectedValues[prefix] = [];
 
             if (competencies.length === 0) {
-                select.innerHTML = '<option value="">-- Esta ficha no tiene competencias cargadas por Excel --</option>';
+                select.innerHTML = '<option value="" disabled>-- Esta ficha no tiene competencias cargadas por Excel --</option>';
                 return;
             }
 
-            select.innerHTML = '<option value="">-- Seleccionar competencia cargada por Excel --</option>';
+            select.innerHTML = '';
+            select.size = Math.min(Math.max(competencies.length, 4), 8);
 
             competencies.forEach(item => {
                 const option = document.createElement('option');
-                option.value = item.id;
-                option.textContent = item.competencia && item.competencia.length > 100
+                const itemKey = buildCompetencySelectionKey(item.competencia, item.resultado);
+                const isCurrentSelection = currentKeys.has(itemKey);
+                const isAssigned = Boolean(item.is_assigned);
+                const label = item.competencia && item.competencia.length > 100
                     ? item.competencia.slice(0, 100) + '...'
                     : (item.competencia || 'Competencia sin texto');
 
-                if ((item.competencia || '') === (currentCompetencia || '') && (item.resultado || '') === (currentResultado || '')) {
+                option.value = item.id;
+                option.textContent = `${isAssigned && !isCurrentSelection ? '🟢 ' : ''}${label}`;
+
+                if (isCurrentSelection) {
                     option.selected = true;
+                    lastCatalogSelectedValues[prefix].push(String(item.id));
+                }
+
+                styleCatalogOption(option, isAssigned, isCurrentSelection);
+                if (isAssigned && !isCurrentSelection) {
+                    option.title = 'Ya seleccionada para esta ficha';
                 }
 
                 select.appendChild(option);
             });
 
-            if (select.value) {
+            if (lastCatalogSelectedValues[prefix].length > 0) {
                 applySelectedCatalogCompetency(prefix);
+            } else {
+                updateCatalogSelectAppearance(select);
             }
         })
         .catch(error => {
@@ -1372,8 +1592,7 @@ function loadProgramCompetencies(prefix, programId, currentCompetencia = '', cur
 }
 
 function handleWeeklyProgramChange() {
-    const programId = document.getElementById('weekly-program').value;
-    loadProgramCompetencies('weekly', programId);
+    syncWeeklyExistingCompetencies();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1510,15 +1729,13 @@ function renderCompetenciesContainer(data) {
                         <div class="mb-2">
                             <label class="form-label small fw-bold">Competencia:</label>
                             ${item.competencia ? 
-                                `<p class="small mb-1">${item.competencia}</p>` : 
+                                `<p class="small mb-1 ${isComplete ? 'text-success fw-semibold' : 'text-dark'}" style="white-space: pre-line;">${item.competencia}</p>` : 
                                 `<p class="text-muted small fst-italic">Sin competencia asignada</p>`}
                         </div>
                         
                         <div class="mb-2">
                             <label class="form-label small fw-bold">Resultado de Aprendizaje:</label>
-                            ${item.resultado ? 
-                                `<p class="small mb-1">${item.resultado}</p>` : 
-                                `<p class="text-muted small fst-italic">Sin resultado asignado</p>`}
+                            ${renderScrollableLearningResults(item.resultado, isComplete)}
                         </div>
                         
                         <button class="btn btn-sm ${isComplete ? 'btn-outline-success' : 'btn-warning'}" 
@@ -1533,6 +1750,7 @@ function renderCompetenciesContainer(data) {
     
     html += `</div>`;
     container.innerHTML = html;
+    initializeLearningResultWheel(container);
 }
 
 function openCompetencyModal(instructor, subject, ficha, programId, assignmentId, competencia, resultado) {
@@ -1593,9 +1811,64 @@ function saveCompetency() {
 // Variables para el modal de semana completa
 let weeklySubjectsData = {};
 let weeklyWeeksData = [];
+let weeklyAssignmentsCache = {};
+
+function getSelectedWeeklyWeekIndex() {
+    const modalWeekSelect = document.getElementById('weekly-week-select');
+    if (modalWeekSelect && modalWeekSelect.value !== '') {
+        return parseInt(modalWeekSelect.value, 10);
+    }
+    return parseInt(document.getElementById('competency-week-select').value, 10);
+}
+
+function getWeeklySelectionSnapshot() {
+    const instructor = document.getElementById('weekly-instructor').value;
+    const subject = document.getElementById('weekly-subject').value;
+    const programId = document.getElementById('weekly-program').value;
+
+    const matchingAssignments = Object.values(weeklyAssignmentsCache).filter(assign => {
+        if (!assign || !assign.instructor) {
+            return false;
+        }
+        if (instructor && assign.instructor !== instructor) {
+            return false;
+        }
+        if (subject && assign.subject !== subject) {
+            return false;
+        }
+        if (programId && String(assign.program_id) !== String(programId)) {
+            return false;
+        }
+        return true;
+    });
+
+    return {
+        competencia: formatCatalogTextValues(matchingAssignments.map(assign => assign.competencia || '')),
+        resultado: formatCatalogTextValues(matchingAssignments.map(assign => assign.resultado || '')),
+    };
+}
+
+function syncWeeklyExistingCompetencies() {
+    const programId = document.getElementById('weekly-program').value;
+    const competenciaField = document.getElementById('weekly-competencia');
+    const resultadoField = document.getElementById('weekly-resultado');
+
+    if (!competenciaField || !resultadoField) {
+        return;
+    }
+
+    const currentSelection = getWeeklySelectionSnapshot();
+    competenciaField.value = currentSelection.competencia;
+    resultadoField.value = currentSelection.resultado;
+
+    if (programId) {
+        loadProgramCompetencies('weekly', programId, currentSelection.competencia, currentSelection.resultado);
+    } else {
+        resetProgramCompetencySelect('weekly');
+    }
+}
 
 function openWeeklyCompetencyModal() {
-    // Gestores solo pueden ver, no modificar
     if (isGestor) {
         alert('Los gestores tienen permiso de solo lectura. No puedes asignar competencias a semanas.');
         return;
@@ -1605,7 +1878,6 @@ function openWeeklyCompetencyModal() {
     const month = currentMonth;
     const year = currentYear;
     
-    // Cargar las semanas del mes
     fetch(`/get_month_weeks?month=${month}&year=${year}`)
         .then(response => response.json())
         .then(data => {
@@ -1620,7 +1892,6 @@ function openWeeklyCompetencyModal() {
                 weekSelect.appendChild(option);
             });
             
-            // Seleccionar la semana actual del calendario por defecto
             if (week < weeklyWeeksData.length) {
                 weekSelect.value = week;
                 updateWeekDatesDisplay();
@@ -1630,10 +1901,8 @@ function openWeeklyCompetencyModal() {
             console.error('Error:', error);
         });
     
-    // Cargar las materias disponibles para la semana actual
     loadWeeklySubjects();
     
-    // Limpiar campos
     document.getElementById('weekly-instructor').value = '';
     document.getElementById('weekly-subject').innerHTML = '<option value="">-- Seleccionar Materia --</option>';
     document.getElementById('weekly-program').value = '';
@@ -1656,10 +1925,12 @@ function updateWeekDatesDisplay() {
     } else {
         weekDisplay.innerHTML = '<small>Seleccione una semana para ver las fechas</small>';
     }
+
+    loadWeeklySubjects();
 }
 
 function loadWeeklySubjects() {
-    const week = parseInt(document.getElementById('competency-week-select').value);
+    const week = getSelectedWeeklyWeekIndex();
     const month = currentMonth;
     const year = currentYear;
     
@@ -1667,9 +1938,13 @@ function loadWeeklySubjects() {
         .then(response => response.json())
         .then(data => {
             const assignments = data.assignments || {};
+            const instructorSelect = document.getElementById('weekly-instructor');
+            const currentInstructor = instructorSelect ? instructorSelect.value : '';
+            const currentSubject = document.getElementById('weekly-subject').value;
+
+            weeklyAssignmentsCache = assignments;
             weeklySubjectsData = {};
             
-            // Recopilar docentes y materias únicos
             for (const [key, assign] of Object.entries(assignments)) {
                 if (assign && assign.instructor) {
                     if (!weeklySubjectsData[assign.instructor]) {
@@ -1682,41 +1957,53 @@ function loadWeeklySubjects() {
                     weeklySubjectsData[assign.instructor].subjects.add(assign.subject);
                 }
             }
+
+            if (currentInstructor) {
+                updateWeeklySubjectOptions(currentSubject);
+            } else {
+                syncWeeklyExistingCompetencies();
+            }
         })
         .catch(error => {
             console.error('Error:', error);
         });
 }
 
-function updateWeeklySubjectOptions() {
+function updateWeeklySubjectOptions(preferredSubject = '') {
     const instructor = document.getElementById('weekly-instructor').value;
     const subjectSelect = document.getElementById('weekly-subject');
     const programSelect = document.getElementById('weekly-program');
+    const selectedSubject = preferredSubject || subjectSelect.value;
     
     subjectSelect.innerHTML = '<option value="">-- Seleccionar Materia --</option>';
     
     if (instructor && weeklySubjectsData[instructor]) {
         const data = weeklySubjectsData[instructor];
-        data.subjects.forEach(subject => {
+        Array.from(data.subjects).sort().forEach(subject => {
             const option = document.createElement('option');
             option.value = subject;
             option.textContent = subject;
             subjectSelect.appendChild(option);
         });
         
-        // Seleccionar automáticamente el programa
+        if (selectedSubject && Array.from(data.subjects).includes(selectedSubject)) {
+            subjectSelect.value = selectedSubject;
+        }
+
         if (data.program_id) {
             programSelect.value = data.program_id;
-            handleWeeklyProgramChange();
         }
+
+        syncWeeklyExistingCompetencies();
     } else {
         programSelect.value = '';
+        document.getElementById('weekly-competencia').value = '';
+        document.getElementById('weekly-resultado').value = '';
         resetProgramCompetencySelect('weekly');
     }
 }
 
 function saveWeeklyCompetency() {
-    // Gestores no pueden guardar competencias semanales
     if (isGestor) {
         alert('Los gestores no pueden guardar competencias.');
         return;
@@ -1731,7 +2018,6 @@ function saveWeeklyCompetency() {
     const month = currentMonth;
     const year = currentYear;
     
-    // Validaciones
     if (!programId || !instructor || !subject || !competencia) {
         alert('Por favor complete todos los campos obligatorios (Semana, Docente, Materia, Programa y Competencia)');
         return;
@@ -1778,59 +2064,6 @@ function saveWeeklyCompetency() {
     });
 }
 
-{% if current_user.rol_activo == 'super admin' %}
-function loadPasswordChanges() {
-    const month = currentMonth;
-    const year = currentYear;
-    const container = document.getElementById('pwd-container');
-    if (!container) return;
-
-    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    const labelEl = document.getElementById('pwd-mes-label');
-    if (labelEl) labelEl.textContent = meses[month] + ' ' + year;
-
-    container.innerHTML = '<p class="text-muted small">Cargando...</p>';
-
-    fetch(`/admin/password_changes_by_week?month=${month}&year=${year}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) {
-                container.innerHTML = `<p class="text-danger small">${data.error}</p>`;
-                return;
-            }
-            const weeks = data.weeks || {};
-            const total = data.total || 0;
-
-            if (total === 0) {
-                container.innerHTML = '<p class="text-muted small">Sin cambios este mes.</p>';
-                return;
-            }
-
-            let html = '';
-            const semanas = Object.keys(weeks).sort();
-            for (const sem of semanas) {
-                const cambios = weeks[sem];
-                html += `<div class="mb-2">`;
-                html += `<div class="d-flex justify-content-between align-items-center mb-1">`;
-                html += `<strong class="text-danger small">${sem}</strong>`;
-                html += `<span class="badge bg-secondary">${cambios.length}</span></div>`;
-                html += `<div class="table-responsive"><table class="table table-sm table-bordered mb-0" style="font-size:0.75rem;">`;
-                html += `<thead class="table-light"><tr><th>Usuario</th><th>Rol</th><th>Fecha</th></tr></thead><tbody>`;
-                for (const c of cambios) {
-                    html += `<tr><td>${c.nombre}</td><td><span class="badge bg-primary">${c.rol}</span></td><td>${c.fecha}</td></tr>`;
-                }
-                html += `</tbody></table></div></div>`;
-            }
-            html += `<div class="text-end"><small class="text-muted">Total: <strong>${total}</strong> cambios</small></div>`;
-            container.innerHTML = html;
-        })
-        .catch(() => {
-            container.innerHTML = '<p class="text-danger small">Error al cargar.</p>';
-        });
-}
-{% else %}
-function loadPasswordChanges() {}
-{% endif %}
 
 {% if current_user.rol_activo == 'gestor' %}
 // ---- Equipo de trabajo del gestor ----

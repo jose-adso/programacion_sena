@@ -66,7 +66,21 @@
                 {% else %}
                 <li><span class="dropdown-item disabled">Agregar Programa (solo lectura)</span></li>
                 {% endif %}
+              </ul>
+            </li>
+            {% endif %}
+            {% if current_user.rol_activo in ['super admin', 'administrador', 'gestor', 'instructor'] or current_user.rol == 'super admin' %}
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Competencias
+              </a>
+              <ul class="dropdown-menu dropdown-menu-dark">
+                <li><a class="dropdown-item" href="{{ url_for('training.list_competencies') }}">Listar Competencias</a></li>
+                {% if current_user.rol_activo in ['super admin', 'administrador'] or current_user.rol == 'super admin' %}
                 <li><a class="dropdown-item" href="{{ url_for('training.upload_competencies') }}">Cargar Competencias Excel</a></li>
+                {% elif current_user.rol_activo == 'gestor' %}
+                <li><span class="dropdown-item disabled">Cargar Competencias Excel (solo lectura)</span></li>
+                {% endif %}
               </ul>
             </li>
             {% endif %}
@@ -85,7 +99,10 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                    <div class="alert alert-{{ category }} alert-dismissible auto-dismiss-flash" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+                    </div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
@@ -129,6 +146,17 @@
     </script>
     {% endif %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.auto-dismiss-flash').forEach(function (alertEl) {
+            setTimeout(function () {
+                const alert = bootstrap.Alert.getOrCreateInstance(alertEl);
+                alert.close();
+            }, 5000);
+        });
+    });
+    </script>
     {% if current_user.is_authenticated %}
     <script>
     (function() {

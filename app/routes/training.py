@@ -75,9 +75,9 @@ EXCEL_HEADER_ALIASES = {
 }
 
 DEFAULT_COMPETENCY_COLUMNS = {
-    "program_reference": 0,  # Columna A
-    "competencia": 1,        # Columna B
-    "resultado": 2,          # Columna C
+    "program_reference": 2,  # Columna C (la ficha/programa puede venir combinada entre C:F en la fila 6)
+    "competencia": 5,        # Columna F
+    "resultado": 6,          # Columna G
 }
 
 REQUIRED_COMPETENCY_FIELDS = set(DEFAULT_COMPETENCY_COLUMNS.keys())
@@ -292,13 +292,162 @@ def find_competency_header_row(rows, max_scan_rows=20):
     return None
 
 
-def row_has_valid_competency_data(row):
-    program_reference = normalize_excel_text(row[DEFAULT_COMPETENCY_COLUMNS["program_reference"]] if len(row) > DEFAULT_COMPETENCY_COLUMNS["program_reference"] else None)
+def get_next_non_empty_value(row, start_index):
+    for value in row[start_index + 1:]:
+        text = normalize_excel_text(value)
+        if text:
+            return text
+    return ""
+
+
+def get_previous_non_empty_value(row, start_index):
+    for i in range(start_index - 1, -1, -1):
+        text = normalize_excel_text(row[i])
+        if text:
+            return text
+    return ""
+
+
+def extract_labeled_program_values(row):
+    ficha_reference = ""
+    program_name = ""
+
+    for index, cell_value in enumerate(row):
+        text = normalize_excel_text(cell_value)
+        header_key = normalize_header_key(cell_value)
+        
+        if not text:
+            continue
+
+        if not ficha_reference and (
+            "ficha de caracterizacion" in header_key or
+            text.lower().startswith("ficha de caracterizacion") or
+            ("ficha" in header_key and "caracterizacion" in header_key)
+        ):
+            ficha_reference = get_next_non_empty_value(row, index)
+            continue
+
+        if not program_name and (
+            "denominacion" in header_key or
+            text.lower().startswith("denominacion")
+        ):
+            program_name = get_next_non_empty_value(row, index)
+            continue
+
+        if not program_name and "ficha" in header_key and index > 0:
+            prev_value = normalize_excel_text(row[index - 1])
+            if prev_value and "denominacion" in normalize_header_key(prev_value):
+                program_name = text
+
+        if not ficha_reference and "ficha" in header_key and index > 0:
+            prev_value = normalize_excel_text(row[index - 1])
+            if prev_value and "ficha de caracterizacion" in normalize_header_key(prev_value):
+                ficha_reference = text
+
+    return ficha_reference, program_name
+
+
+def extract_program_reference_candidates(row):
+    candidates = []
+
+    ficha_reference, program_name = extract_labeled_program_values(row)
+    for value in (ficha_reference, program_name):
+        text = normalize_excel_text(value)
+        if text and text not in candidates:
+            candidates.append(text)
+
+    for col_index, value in enumerate(row[:10]):
+        text = normalize_excel_text(value)
+        if not text:
+            continue
+        
+        header_key = normalize_header_key(text)
+        
+        if "ficha de caracterizacion" in header_key and col_index + 1 < len(row):
+            next_val = normalize_excel_text(row[col_index + 1])
+            if next_val and next_val not in candidates:
+                candidates.append(next_val)
+        
+        if "denominacion" in header_key and col_index + 1 < len(row):
+            next_val = normalize_excel_text(row[col_index + 1])
+            if next_val and next_val not in candidates:
+                candidates.append(next_val)
+        
+        if re.match(r"^\d+\s*-", text):
+            if text not in candidates:
+                candidates.append(text)
+            
+            if col_index + 1 < len(row):
+                next_val = normalize_excel_text(row[col_index + 1])
+                if next_val and next_val not in candidates:
+                    candidates.append(next_val)
+
+    for value in row[2:6]:
+        text = normalize_excel_text(value)
+        if text and text not in candidates:
+            candidates.append(text)
+
+    joined_text = " ".join(candidates).strip()
+    if joined_text and joined_text not in candidates:
+        candidates.append(joined_text)
+
+    return candidates
+
+
+def detect_competency_sheet_layout(rows, programs_by_ficha=None, programs_by_name=None, max_scan_rows=20):
+    for row_number, row in enumerate(rows[:max_scan_rows], start=1):
+        ficha_reference, program_name = extract_labeled_program_values(row)
+        if ficha_reference or program_name:
+            return {
+                "start_row": 13,
+                "program_reference": ficha_reference or program_name,
+                "ficha_reference": ficha_reference,
+                "program_name": program_name,
+            }
+
+        if row_number == 6:
+            for candidate in extract_program_reference_candidates(row):
+                if not candidate:
+                    continue
+                if not programs_by_ficha or not programs_by_name:
+                    return {
+                        "start_row": 13,
+                        "program_reference": candidate,
+                        "ficha_reference": candidate,
+                        "program_name": "",
+                    }
+
+                program = resolve_training_program(candidate, programs_by_ficha, programs_by_name)
+                if program:
+                    return {
+                        "start_row": 13,
+                        "program_reference": candidate,
+                        "ficha_reference": candidate,
+                        "program_name": program.program_name,
+                    }
+
+    return None
+
+
+def get_competency_texts_from_row(row):
     competencia = normalize_excel_text(row[DEFAULT_COMPETENCY_COLUMNS["competencia"]] if len(row) > DEFAULT_COMPETENCY_COLUMNS["competencia"] else None)
-    return bool(program_reference and competencia)
+    resultado = normalize_excel_text(row[DEFAULT_COMPETENCY_COLUMNS["resultado"]] if len(row) > DEFAULT_COMPETENCY_COLUMNS["resultado"] else None)
+    return competencia, resultado
 
 
-def load_competency_excel_rows(excel_file, filename):
+def row_has_valid_competency_data(row):
+    competencia, resultado = get_competency_texts_from_row(row)
+
+    if competencia.lower() in {"competencia", "competencias"}:
+        return False
+
+    if resultado.lower() in {"resultado", "resultado de aprendizaje", "resultados de aprendizaje", "ra"}:
+        return False
+
+    return bool(competencia or resultado)
+
+
+def load_competency_excel_rows(excel_file, filename, programs_by_ficha=None, programs_by_name=None):
     sheets_data = []
 
     if filename.endswith(".xls"):
@@ -324,36 +473,140 @@ def load_competency_excel_rows(excel_file, filename):
     best_match = None
     for sheet_name, rows in sheets_data:
         header_row_number = find_competency_header_row(rows)
+        labeled_layout = detect_competency_sheet_layout(rows, programs_by_ficha, programs_by_name)
+        start_row_number = max(
+            header_row_number or 0,
+            labeled_layout["start_row"] if labeled_layout else 0,
+        )
+
         valid_rows = 0
         for row_index, row in enumerate(rows, start=1):
-            if header_row_number and row_index <= header_row_number:
+            if start_row_number and row_index <= start_row_number:
                 continue
             if row_has_valid_competency_data(row):
                 valid_rows += 1
 
-        score = (1 if header_row_number else 0, valid_rows)
+        score = (
+            1 if labeled_layout and labeled_layout.get("program_reference") else 0,
+            1 if (len(rows) > 13 and row_has_valid_competency_data(rows[13])) else 0,
+            valid_rows,
+        )
         if best_match is None or score > best_match[0]:
-            best_match = (score, rows, header_row_number or 0, sheet_name)
+            best_match = (
+                score,
+                rows,
+                start_row_number,
+                sheet_name,
+                (labeled_layout or {}).get("program_reference", ""),
+            )
 
-    if best_match and best_match[0][1] > 0:
-        _, rows, header_row_number, sheet_name = best_match
-        return rows, header_row_number, DEFAULT_COMPETENCY_COLUMNS.copy(), sheet_name
+    if best_match and best_match[0][2] > 0:
+        _, rows, start_row_number, sheet_name, initial_program_reference = best_match
+        return rows, start_row_number, DEFAULT_COMPETENCY_COLUMNS.copy(), sheet_name, initial_program_reference
 
     raise ValueError(
-        "No se encontró una hoja válida para importar competencias. Usa la ficha o nombre del programa en A, la competencia en B y el resultado de aprendizaje en C."
+        "No se encontró una hoja válida para importar competencias. Verifica que el nombre o número de la ficha/programa esté en la fila 6 entre C:F y que desde la fila 14 la competencia esté en F y el resultado en G."
     )
 
 
 def resolve_training_program(program_reference, programs_by_ficha, programs_by_name):
-    ficha_key = normalize_ficha_number(program_reference)
+    raw_reference = normalize_excel_text(program_reference)
+
+    ficha_key = normalize_ficha_number(raw_reference)
     if ficha_key and ficha_key in programs_by_ficha:
         return programs_by_ficha[ficha_key]
 
-    name_key = normalize_header_key(program_reference)
+    ficha_match = re.search(r"\d{1,20}", raw_reference)
+    if ficha_match:
+        matched_ficha = ficha_match.group(0)
+        if matched_ficha in programs_by_ficha:
+            return programs_by_ficha[matched_ficha]
+
+    name_key = normalize_header_key(raw_reference)
     if name_key and name_key in programs_by_name:
         return programs_by_name[name_key]
 
+    for program_name_key, program in programs_by_name.items():
+        if program_name_key and (program_name_key in name_key or name_key in program_name_key):
+            return program
+
     return None
+
+
+def extract_program_reference_from_competency_row(row):
+    for col_index, value in enumerate(row[:10]):
+        text = normalize_excel_text(value)
+        if not text:
+            continue
+        
+        if re.match(r"^\d+\s*-", text):
+            match = re.match(r"^(\d+)\s*-", text)
+            if match:
+                return match.group(1)
+        
+        if re.match(r"^\d{5,20}$", text.replace(" ", "")):
+            return text
+        
+        ficha_match = re.search(r"\d{5,20}", text)
+        if ficha_match:
+            return ficha_match.group(0)
+    
+    return ""
+
+
+def find_program_reference_in_row(row, programs_by_ficha, programs_by_name):
+    candidates = []
+    
+    for col_index, value in enumerate(row[:10]):
+        text = normalize_excel_text(value)
+        if not text:
+            continue
+        
+        if re.match(r"^\d+\s*-", text):
+            match = re.match(r"^(\d+)\s*-", text)
+            if match:
+                candidates.append(match.group(1))
+        
+        clean_num = text.replace(" ", "")
+        if re.match(r"^\d{5,20}$", clean_num):
+            candidates.append(clean_num)
+        
+        ficha_match = re.search(r"\d{5,20}", text)
+        if ficha_match and ficha_match.group(0) not in candidates:
+            candidates.append(ficha_match.group(0))
+
+    candidates.extend(extract_program_reference_candidates(row))
+
+    for value in row[:10]:
+        text = normalize_excel_text(value)
+        if text and text not in candidates:
+            candidates.append(text)
+
+    joined_text = " ".join(candidates).strip()
+    if joined_text and joined_text not in candidates:
+        candidates.append(joined_text)
+
+    for candidate in candidates:
+        if resolve_training_program(candidate, programs_by_ficha, programs_by_name):
+            return candidate
+
+    return ""
+
+
+def choose_program_reference(explicit_program_reference, detected_reference, current_program_reference, programs_by_ficha, programs_by_name):
+    candidates = []
+
+    # Priorizar siempre la ficha detectada en el encabezado del reporte.
+    for candidate in (current_program_reference, explicit_program_reference, detected_reference):
+        text = normalize_excel_text(candidate)
+        if text and text not in candidates:
+            candidates.append(text)
+
+    for candidate in candidates:
+        if resolve_training_program(candidate, programs_by_ficha, programs_by_name):
+            return candidate
+
+    return ""
 
 
 def import_competencies_from_excel(excel_file):
@@ -394,10 +647,16 @@ def import_competencies_from_excel(excel_file):
     unresolved_rows = []
     duplicate_rows = []
 
-    rows, header_row_number, column_map, sheet_name = load_competency_excel_rows(excel_file, filename)
+    rows, start_row_number, column_map, sheet_name, initial_program_reference = load_competency_excel_rows(
+        excel_file,
+        filename,
+        programs_by_ficha,
+        programs_by_name,
+    )
+    current_program_reference = initial_program_reference or ""
 
     for row_index, row in enumerate(rows, start=1):
-        if header_row_number and row_index <= header_row_number:
+        if start_row_number and row_index <= start_row_number:
             continue
 
         program_reference_raw = row[column_map["program_reference"]] if len(row) > column_map["program_reference"] else None
@@ -405,11 +664,32 @@ def import_competencies_from_excel(excel_file):
         resultado_raw = row[column_map["resultado"]] if len(row) > column_map["resultado"] else None
 
         if all(value in (None, "") for value in (program_reference_raw, competencia_raw, resultado_raw)):
+            detected_reference = find_program_reference_in_row(row, programs_by_ficha, programs_by_name)
+            if detected_reference:
+                current_program_reference = detected_reference
             continue
 
-        program_reference = normalize_excel_text(program_reference_raw)
-        competencia = normalize_excel_text(competencia_raw)
-        resultado = normalize_excel_text(resultado_raw)
+        competencia, resultado = get_competency_texts_from_row(row)
+
+        detected_reference = find_program_reference_in_row(row, programs_by_ficha, programs_by_name)
+        explicit_program_reference = normalize_excel_text(program_reference_raw)
+        program_reference = choose_program_reference(
+            explicit_program_reference,
+            detected_reference,
+            current_program_reference,
+            programs_by_ficha,
+            programs_by_name,
+        )
+
+        if detected_reference and not competencia:
+            current_program_reference = choose_program_reference(
+                "",
+                detected_reference,
+                current_program_reference,
+                programs_by_ficha,
+                programs_by_name,
+            ) or current_program_reference
+            continue
 
         if program_reference.lower() in {"ficha", "numero de ficha", "número de ficha", "nombre de ficha", "programa", "nombre del programa"}:
             continue
@@ -420,6 +700,7 @@ def import_competencies_from_excel(excel_file):
             skipped_rows.append(row_index)
             continue
 
+        current_program_reference = program_reference
         program = resolve_training_program(program_reference, programs_by_ficha, programs_by_name)
         if not program:
             unresolved_rows.append(row_index)
@@ -434,21 +715,6 @@ def import_competencies_from_excel(excel_file):
             duplicate_rows.append(row_index)
             continue
 
-        record_key = (program.id, normalize_header_key(competencia))
-        existing_record = records_by_program_comp.get(record_key)
-
-        if existing_record:
-            existing_record.resultado = resultado or existing_record.resultado
-            existing_record.instructor_name = existing_record.instructor_name or "CATALOGO EXCEL"
-            existing_record.updated_at = datetime.utcnow()
-            updated_count += 1
-            duplicate_keys.add((
-                program.id,
-                normalize_header_key(existing_record.competencia),
-                normalize_header_key(existing_record.resultado or "")
-            ))
-            continue
-
         new_record = CompetencyRecord(
             training_program_id=program.id,
             competencia=competencia,
@@ -457,7 +723,6 @@ def import_competencies_from_excel(excel_file):
             horario=None,
         )
         db.session.add(new_record)
-        records_by_program_comp[record_key] = new_record
         duplicate_keys.add(duplicate_key)
         imported_count += 1
 
@@ -510,7 +775,7 @@ def import_programs_from_excel(excel_file):
             skipped_rows.append(row_index)
             continue
 
-        if not re.fullmatch(r"\d{5,20}", ficha_number):
+        if not re.fullmatch(r"\d{1,20}", ficha_number):
             skipped_rows.append(row_index)
             continue
 
@@ -540,6 +805,70 @@ def import_programs_from_excel(excel_file):
 
     return imported_count, updated_count, skipped_rows, updated_rows, sheet_name
 
+@training_bp.route("/competencies")
+@login_required
+def list_competencies():
+    if current_user.rol_activo not in ["super admin", "administrador", "gestor", "instructor"]:
+        flash("No tienes permiso para acceder al listado de competencias", "danger")
+        return redirect(url_for("main.home"))
+
+    competency_records = (
+        CompetencyRecord.query
+        .join(TrainingProgram, CompetencyRecord.training_program_id == TrainingProgram.id)
+        .order_by(TrainingProgram.ficha_number.asc(), CompetencyRecord.competencia.asc(), CompetencyRecord.id.asc())
+        .all()
+    )
+
+    grouped_competencies = []
+    groups_by_program = {}
+
+    for record in competency_records:
+        program = record.training_program
+        if not program:
+            continue
+
+        group = groups_by_program.get(program.id)
+        if group is None:
+            group = {
+                "training_program_id": program.id,
+                "ficha_number": program.ficha_number,
+                "program_name": program.program_name,
+                "records": [],
+            }
+            groups_by_program[program.id] = group
+            grouped_competencies.append(group)
+
+        group["records"].append(record)
+
+    return render_template(
+        "training/competencies_list.html",
+        grouped_competencies=grouped_competencies,
+    )
+
+
+@training_bp.route("/competencies/delete/<int:program_id>", methods=["POST"])
+@login_required
+def delete_competencies_group(program_id):
+    if current_user.rol_activo not in ["super admin", "administrador"]:
+        flash("No tienes permiso para eliminar competencias", "danger")
+        return redirect(url_for("training.list_competencies"))
+
+    program = TrainingProgram.query.get_or_404(program_id)
+
+    try:
+        deleted_count = CompetencyRecord.query.filter_by(training_program_id=program_id).delete()
+        db.session.commit()
+        flash(
+            f"Se eliminaron {deleted_count} competencias/resultados de la ficha {program.ficha_number} - {program.program_name}",
+            "success"
+        )
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error al eliminar las competencias de la ficha {program.ficha_number}: {str(e)}", "danger")
+
+    return redirect(url_for("training.list_competencies"))
+
+
 @training_bp.route("/competencies/upload", methods=["GET", "POST"])
 @login_required
 def upload_competencies():
@@ -567,7 +896,7 @@ def upload_competencies():
                     "success"
                 )
             else:
-                flash("No se importaron competencias. Verifica que el Excel tenga ficha o programa en A, competencia en B y resultado en C.", "warning")
+                flash("No se importaron competencias. Verifica el encabezado del reporte: 'Ficha de Caracterización' y 'Denominación' arriba, y desde la fila 14 la competencia en F y el resultado en G.", "warning")
 
             if unresolved_rows:
                 flash(

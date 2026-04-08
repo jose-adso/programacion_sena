@@ -5,6 +5,8 @@ from app.models.training import TrainingProgram
 from app.models.users import Users, GestorEquipo
 from app import db
 from datetime import datetime
+import re
+import unicodedata
 
 main_bp = Blueprint("main", __name__)
 
@@ -26,6 +28,93 @@ def _filter_query_by_professional_profile(query, professional_profile):
         return query.filter(CalendarAssignment.id == -1)
 
     return query.filter(CalendarAssignment.instructor_name.in_(instructor_names))
+
+
+MULTI_VALUE_SEPARATOR_RE = re.compile(r"\n\s*---+\s*\n")
+
+
+def _normalize_competency_text(value):
+    text = (value or "").strip().lower()
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def _split_multi_value(value):
+    text = (value or "").replace("\r\n", "\n").strip()
+    if not text:
+        return []
+
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    bullet_lines = [
+        line[2:].strip()
+        for line in lines
+        if line.startswith("• ") or line.startswith("- ")
+    ]
+    if bullet_lines and len(bullet_lines) == len(lines):
+        return [line for line in bullet_lines if line]
+
+    separated_parts = [
+        part.strip(" \n\r\t•-")
+        for part in MULTI_VALUE_SEPARATOR_RE.split(text)
+        if part.strip()
+    ]
+    if len(separated_parts) > 1:
+        return separated_parts
+
+    return [text]
+
+
+def _normalize_competency_pair(competencia, resultado=""):
+    return (
+        _normalize_competency_text(competencia),
+        _normalize_competency_text(resultado),
+    )
+
+
+def _extract_competency_pairs(competencia, resultado=""):
+    competencias = _split_multi_value(competencia)
+    resultados = _split_multi_value(resultado)
+    total = max(len(competencias), len(resultados), 1)
+    pairs = []
+
+    for index in range(total):
+        competencia_text = (
+            competencias[0]
+            if len(competencias) == 1 and competencias
+            else (competencias[index] if index < len(competencias) else "")
+        )
+        resultado_text = (
+            resultados[0]
+            if len(resultados) == 1 and resultados
+            else (resultados[index] if index < len(resultados) else "")
+        )
+        key = _normalize_competency_pair(competencia_text, resultado_text)
+        if key[0]:
+            pairs.append(key)
+
+    return pairs
+
+
+def _program_has_duplicate_competency(program_id, competencia, resultado="", exclude_ids=None):
+    target_keys = set(_extract_competency_pairs(competencia, resultado))
+    if not target_keys:
+        return False
+
+    excluded = {int(item) for item in (exclude_ids or []) if item}
+    assignments = CalendarAssignment.query.filter(
+        CalendarAssignment.training_program_id == program_id,
+        CalendarAssignment.competencia.isnot(None),
+        CalendarAssignment.competencia != ''
+    ).all()
+
+    for assignment in assignments:
+        if assignment.id in excluded:
+            continue
+        assignment_keys = set(_extract_competency_pairs(assignment.competencia, assignment.resultado or ""))
+        if target_keys.intersection(assignment_keys):
+            return True
+
+    return False
 
 
 @main_bp.route("/update_user_asignatura", methods=["POST"])
@@ -208,16 +297,20 @@ def get_program_competencies():
         CompetencyRecord.id.asc()
     ).all()
 
+    assigned_keys = {
+        key
+        for assign in CalendarAssignment.query.filter_by(training_program_id=program_id).all()
+        for key in _extract_competency_pairs(assign.competencia, assign.resultado or "")
+        if (assign.competencia or "").strip()
+    }
+
     seen = set()
     competencies = []
     for record in records:
         if not record.competencia:
             continue
 
-        key = (
-            (record.competencia or '').strip().lower(),
-            (record.resultado or '').strip().lower(),
-        )
+        key = _normalize_competency_pair(record.competencia, record.resultado or "")
         if key in seen:
             continue
         seen.add(key)
@@ -226,6 +319,7 @@ def get_program_competencies():
             "id": record.id,
             "competencia": record.competencia,
             "resultado": record.resultado or "",
+            "is_assigned": key in assigned_keys,
         })
 
     return jsonify({
@@ -636,7 +730,6 @@ def remove_calendar_assignment():
 @login_required
 def update_assignment_competency():
     """Actualizar competencia y resultado de aprendizaje de una asignación"""
-    # Gestores solo pueden ver, no modificar
     if current_user.rol_activo == "gestor":
         return jsonify({"success": False, "error": "Los gestores no pueden modificar competencias"}), 403
     
@@ -652,6 +745,17 @@ def update_assignment_competency():
     
     if not assignment:
         return jsonify({"success": False, "error": "Asignación no encontrada"}), 404
+
+    if _program_has_duplicate_competency(
+        assignment.training_program_id,
+        competencia,
+        resultado,
+        exclude_ids=[assignment.id],
+    ):
+        return jsonify({
+            "success": False,
+            "error": "Esta competencia y resultado ya fueron seleccionados para esta ficha. Las opciones en verde no se pueden repetir.",
+        }), 400
     
     assignment.competencia = competencia
     assignment.resultado = resultado
@@ -669,7 +773,6 @@ def update_assignment_competency():
 @login_required
 def save_weekly_competency():
     """Guardar competencia y resultado de aprendizaje para toda una semana (lunes a viernes)"""
-    # Gestores solo pueden ver, no modificar
     if current_user.rol_activo == "gestor":
         return jsonify({"success": False, "error": "Los gestores no pueden guardar competencias"}), 403
     
@@ -682,18 +785,16 @@ def save_weekly_competency():
     subject = data.get('subject')
     competencia = data.get('competencia')
     resultado = data.get('resultado')
-    week_start = data.get('week_start')  # Día de inicio de la semana (número)
-    week_end = data.get('week_end')      # Día de fin de la semana (número)
+    week_start = data.get('week_start')
+    week_end = data.get('week_end')
     month = data.get('month')
     year = data.get('year')
     
     if not all([program_id, instructor_name, subject, competencia, week_start, week_end, month, year]):
         return jsonify({"success": False, "error": "Faltan datos obligatorios"}), 400
     
-    # Días de la semana que queremos actualizar (Lunes a Viernes)
     days_to_update = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes']
     
-    # Obtener todas las asignaciones que coincidan con los filtros
     assignments = CalendarAssignment.query.filter_by(
         training_program_id=program_id,
         instructor_name=instructor_name,
@@ -706,12 +807,30 @@ def save_weekly_competency():
         CalendarAssignment.day.in_(days_to_update)
     ).all()
     
+    if _program_has_duplicate_competency(
+        program_id,
+        competencia,
+        resultado,
+        exclude_ids=[assign.id for assign in assignments],
+    ):
+        return jsonify({
+            "success": False,
+            "error": "Esta competencia y resultado ya fueron seleccionados para esta ficha. Elige otra opción disponible.",
+        }), 400
+
     updated_count = 0
     for assign in assignments:
         assign.competencia = competencia
         assign.resultado = resultado
         assign.updated_at = datetime.utcnow()
         updated_count += 1
+    
+    try:
+        db.session.commit()
+        return jsonify({"success": True, "updated_count": updated_count})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
     
     try:
         db.session.commit()

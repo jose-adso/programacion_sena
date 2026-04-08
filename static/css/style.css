@@ -124,6 +124,17 @@ body {
     box-shadow: 0 0 0 0.2rem rgba(255, 111, 0, 0.25);
 }
 
+.form-select[multiple] {
+    min-height: 220px;
+    border: 2px solid #dee2e6;
+    padding: 6px;
+}
+
+.form-select[multiple] option {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f1f1;
+}
+
 /* Table styling */
 .table {
     border-radius: 10px;
@@ -155,6 +166,30 @@ body {
 
 .alert-info {
     border-left-color: var(--info-color);
+}
+
+.learning-result-wheel {
+    border: 1px solid #d8efe2;
+    border-radius: 8px;
+    background: #f8fffb;
+    padding: 10px 12px;
+    cursor: ns-resize;
+}
+
+.learning-result-wheel.is-complete {
+    border-color: rgba(25, 135, 84, 0.35);
+}
+
+.learning-result-wheel__text {
+    white-space: pre-line;
+}
+
+.learning-result-wheel__hint {
+    font-size: 0.75rem;
+    color: #6c757d;
+    border-top: 1px dashed #d8e3dc;
+    margin-top: 6px;
+    padding-top: 6px;
 }
 
 /* Heading styling */

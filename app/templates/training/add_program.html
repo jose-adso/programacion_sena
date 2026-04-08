@@ -14,10 +14,6 @@
             </div>
             <div class="card-body">
                 {% if not read_only %}
-                <div class="alert alert-info">
-                    <strong>Cargar fichas desde Excel:</strong> cada <strong>fila</strong> se procesa como un registro usando las columnas <code>E</code> (Número de Ficha), <code>AA</code> (Nombre del Programa), <code>AG</code> (Lugar o Municipio), <code>M</code> (Fecha de Inicio) y <code>N</code> (Fecha de Término). El campo <strong>Aula</strong> se guardará como <code>centro</code> y las fichas repetidas no se cargarán.
-                </div>
-
                 <form method="POST" action="{{ url_for('training.add_program') }}" enctype="multipart/form-data" class="mb-4">
                     <input type="hidden" name="submit_type" value="excel">
                     <div class="row g-3 align-items-end">

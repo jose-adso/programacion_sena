@@ -13,8 +13,19 @@
 </div>
 
 {% if programs %}
+<div class="row mb-3">
+    <div class="col-md-6">
+        <input
+            type="text"
+            id="programFilterInput"
+            class="form-control"
+            placeholder="Filtrar por ficha, programa, aula o municipio..."
+            oninput="filterProgramsTable()"
+        >
+    </div>
+</div>
 <div class="table-responsive">
-    <table class="table table-striped table-hover">
+    <table class="table table-striped table-hover" id="programsTable">
         <thead class="table-dark">
             <tr>
                 <th>#</th>
@@ -30,7 +41,7 @@
         </thead>
         <tbody>
             {% for program in programs %}
-            <tr>
+            <tr class="program-row">
                 <td>{{ loop.index }}</td>
                 <td>{{ program.ficha_number }}</td>
                 <td>{{ program.program_name }}</td>
@@ -63,4 +74,19 @@
     {% endif %}
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterProgramsTable() {
+    const input = document.getElementById('programFilterInput');
+    const filter = (input ? input.value : '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#programsTable tbody tr.program-row');
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = !filter || text.includes(filter) ? '' : 'none';
+    });
+}
+</script>
 {% endblock %}

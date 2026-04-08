@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Competencias y Resultados{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <h2 class="mb-1">Competencias y Resultados de Aprendizaje</h2>
+            <p class="text-muted mb-0">Listado de competencias asociadas a cada ficha o programa.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('training.upload_competencies') }}" class="btn btn-success">Cargar Excel</a>
+            <a href="{{ url_for('main.home') }}" class="btn btn-secondary">Volver</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <input type="text" id="competencySearch" class="form-control" placeholder="Buscar por ficha, programa, competencia o resultado...">
+                </div>
+            </div>
+
+            {% if grouped_competencies %}
+                <div id="competencyGroups">
+                    {% for group in grouped_competencies %}
+                    <div class="card border-secondary mb-3 competency-group">
+                        <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <strong>Ficha {{ group.ficha_number }}</strong>
+                                <div class="text-muted small">{{ group.program_name }}</div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-dark">{{ group.records|length }} registros</span>
+                                {% if current_user.rol_activo in ['super admin', 'administrador'] %}
+                                <form method="POST" action="{{ url_for('training.delete_competencies_group', program_id=group.training_program_id) }}" onsubmit="return confirm('¿Eliminar todos los registros de competencias y resultados de la ficha {{ group.ficha_number }}?');" class="m-0">
+                                    <button type="submit" class="btn btn-sm btn-danger">Eliminar todo</button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th style="width: 45%;">Competencia</th>
+                                            <th>Resultado de Aprendizaje</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for record in group.records %}
+                                        <tr class="competency-row">
+                                            <td>{{ record.competencia }}</td>
+                                            <td>{{ record.resultado or 'Sin resultado' }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-4">No hay competencias registradas todavía.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('competencySearch');
+    const groupsContainer = document.getElementById('competencyGroups');
+    if (!searchInput || !groupsContainer) return;
+
+    searchInput.addEventListener('input', function () {
+        const term = this.value.toLowerCase().trim();
+        const groups = groupsContainer.querySelectorAll('.competency-group');
+
+        groups.forEach(function (group) {
+            const rows = group.querySelectorAll('.competency-row');
+            let visibleRows = 0;
+
+            rows.forEach(function (row) {
+                const text = row.textContent.toLowerCase();
+                const shouldShow = !term || text.includes(term) || group.textContent.toLowerCase().includes(term);
+                row.style.display = shouldShow ? '' : 'none';
+                if (shouldShow) visibleRows += 1;
+            });
+
+            group.style.display = visibleRows > 0 ? '' : 'none';
+        });
+    });
+});
+</script>
+{% endblock %}
