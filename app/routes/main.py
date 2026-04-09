@@ -729,41 +729,71 @@ def remove_calendar_assignment():
 @main_bp.route("/update_assignment_competency", methods=["POST"])
 @login_required
 def update_assignment_competency():
-    """Actualizar competencia y resultado de aprendizaje de una asignación"""
+    """Actualizar competencia y resultado de aprendizaje de una asignación o de todo el bloque semanal."""
     if current_user.rol_activo == "gestor":
         return jsonify({"success": False, "error": "Los gestores no pueden modificar competencias"}), 403
     
     if current_user.rol_activo not in ["super admin", "administrador"]:
         return jsonify({"success": False, "error": "No autorizado"}), 403
     
-    data = request.get_json()
+    data = request.get_json() or {}
     assignment_id = data.get('assignment_id')
-    competencia = data.get('competencia')
-    resultado = data.get('resultado')
-    
-    assignment = CalendarAssignment.query.get(assignment_id)
+    competencia = (data.get('competencia') or '').strip()
+    resultado = (data.get('resultado') or '').strip()
+    apply_to_week = bool(data.get('apply_to_week'))
+
+    assignment = db.session.get(CalendarAssignment, assignment_id)
     
     if not assignment:
         return jsonify({"success": False, "error": "Asignación no encontrada"}), 404
 
+    assignments_to_update = [assignment]
+
+    if apply_to_week:
+        try:
+            week_start = int(data.get('week_start'))
+            week_end = int(data.get('week_end'))
+            month = int(data.get('month'))
+            year = int(data.get('year'))
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "Semana inválida para actualizar la competencia"}), 400
+
+        program_id = data.get('program_id') or assignment.training_program_id
+        instructor_name = (data.get('instructor_name') or assignment.instructor_name or '').strip()
+
+        query = CalendarAssignment.query.filter(
+            CalendarAssignment.training_program_id == int(program_id),
+            CalendarAssignment.instructor_name == instructor_name,
+            CalendarAssignment.month == month,
+            CalendarAssignment.year == year,
+            CalendarAssignment.day_number >= week_start,
+            CalendarAssignment.day_number <= week_end,
+        )
+
+        assignments_to_update = query.all() or [assignment]
+
+    exclude_ids = [item.id for item in assignments_to_update if item and item.id]
+    program_id_for_validation = assignments_to_update[0].training_program_id if assignments_to_update else assignment.training_program_id
+
     if _program_has_duplicate_competency(
-        assignment.training_program_id,
+        program_id_for_validation,
         competencia,
         resultado,
-        exclude_ids=[assignment.id],
+        exclude_ids=exclude_ids,
     ):
         return jsonify({
             "success": False,
             "error": "Esta competencia y resultado ya fueron seleccionados para esta ficha. Las opciones en verde no se pueden repetir.",
         }), 400
     
-    assignment.competencia = competencia
-    assignment.resultado = resultado
-    assignment.updated_at = datetime.utcnow()
+    for item in assignments_to_update:
+        item.competencia = competencia
+        item.resultado = resultado
+        item.updated_at = datetime.utcnow()
     
     try:
         db.session.commit()
-        return jsonify({"success": True})
+        return jsonify({"success": True, "updated_count": len(assignments_to_update)})
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "error": str(e)}), 500

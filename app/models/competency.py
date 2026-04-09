@@ -4,7 +4,7 @@ from datetime import datetime
 class CompetencyRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     training_program_id = db.Column(db.Integer, db.ForeignKey('training_program.id'), nullable=False)
-    competencia = db.Column(db.String(200), nullable=False)
+    competencia = db.Column(db.Text, nullable=False)
     resultado = db.Column(db.Text, nullable=True)  # Resultado esperado o logrado
     instructor_name = db.Column(db.String(100), nullable=False)
     horario = db.Column(db.Text, nullable=True)  # JSON o string para horarios semanales
@@ -23,7 +23,7 @@ class CalendarAssignment(db.Model):
     training_program_id = db.Column(db.Integer, db.ForeignKey('training_program.id'), nullable=False)
     instructor_name = db.Column(db.String(100), nullable=False)
     subject = db.Column(db.String(100), nullable=False)  # Ej: TIC
-    competencia = db.Column(db.String(200), nullable=True)  # Competencia asociada
+    competencia = db.Column(db.Text, nullable=True)  # Competencia asociada
     resultado = db.Column(db.Text, nullable=True)  # Resultado de aprendizaje
     day = db.Column(db.String(20), nullable=False)  # Lunes, Martes, etc.
     day_number = db.Column(db.Integer, nullable=False)  # Número del día del mes (1-31)

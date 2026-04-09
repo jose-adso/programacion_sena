@@ -198,6 +198,10 @@ def import_instructors_from_excel(excel_file):
             duplicate_rows.append(f"{row_label} (usuario '{login_username}' ya existe)")
             continue
 
+        if existing_user and existing_user.is_base_super_admin:
+            duplicate_rows.append(f"{row_label} (super admin protegido, no se modifica)")
+            continue
+
         target_user = None
 
         try:
@@ -252,7 +256,7 @@ admin_bp = Blueprint("admin", __name__)
 @admin_bp.route("/panel")
 @login_required
 def panel():
-    is_base_super_admin = current_user.rol == "super admin"
+    is_base_super_admin = current_user.is_base_super_admin
     can_open_panel = current_user.rol_activo in ["super admin", "administrador", "gestor"] or is_base_super_admin
 
     # Super admin base puede entrar al panel para recuperar/cambiar su rol activo.
@@ -263,10 +267,13 @@ def panel():
     can_manage_users = current_user.rol_activo in ["super admin", "administrador"]
     visible_roles = ["administrador", "gestor", "instructor"]
 
+    if is_base_super_admin:
+        visible_roles = ["super admin", *visible_roles]
+
     if can_manage_users or current_user.rol_activo == "gestor":
         users = Users.query.filter(Users.rol.in_(visible_roles)).all()
     else:
-        users = [current_user] if current_user.rol in visible_roles else []
+        users = [current_user] if current_user.rol in visible_roles or is_base_super_admin else []
 
     return render_template(
         "admin/panel.html",
@@ -319,7 +326,7 @@ def enviar_links_instructores():
 @login_required
 def cambiar_rol(user_id):
     """Cambiar el rol de un usuario temporalmente"""
-    is_base_super_admin = current_user.rol == "super admin"
+    is_base_super_admin = current_user.is_base_super_admin
     is_active_admin = current_user.rol_activo in ["super admin", "administrador"]
 
     # Super admin base puede cambiar su propio rol aunque su rol activo sea otro.
@@ -337,6 +344,9 @@ def cambiar_rol(user_id):
     user = Users.query.get(user_id)
     if not user:
         return jsonify({"success": False, "error": "Usuario no encontrado"}), 404
+
+    if user.is_base_super_admin and user.id != current_user.id:
+        return jsonify({"success": False, "error": "La cuenta base de super admin está protegida"}), 403
     
     # Validar rol
     roles_validos = ["super admin", "administrador", "gestor", "instructor"]
@@ -348,6 +358,9 @@ def cambiar_rol(user_id):
         return jsonify({"success": False, "error": "No tienes permiso para asignar rol de super admin"}), 403
     
     hoy = datetime.now().date()
+
+    if user.is_base_super_admin and duracion == 'permanente' and nuevo_rol != 'super admin':
+        return jsonify({"success": False, "error": "La cuenta base de super admin no puede perder su rol permanente"}), 403
     
     if duracion == 'permanente':
         # Establecer rol permanente
@@ -545,6 +558,10 @@ def eliminar(user_id):
         return redirect(url_for("admin.panel"))
     
     user_to_delete = Users.query.get_or_404(user_id)
+
+    if user_to_delete.is_base_super_admin or user_to_delete.rol == "super admin":
+        flash("La cuenta base de super admin está protegida y no se puede eliminar", "danger")
+        return redirect(url_for("admin.panel"))
     
     try:
         db.session.delete(user_to_delete)

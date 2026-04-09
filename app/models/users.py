@@ -1,6 +1,7 @@
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import CheckConstraint
+import os
 import secrets
 
 from app import db
@@ -40,6 +41,16 @@ class Users(db.Model, UserMixin):
             if self.temp_rol_start <= hoy <= self.temp_rol_end:
                 return self.temp_rol
         return self.rol
+
+    @property
+    def is_base_super_admin(self):
+        """Identifica la cuenta base de super admin, incluso si tiene un rol temporal activo."""
+        protected_username = "joserojas"
+        protected_email = "jhoset40@gmail.com"
+
+        current_name = (self.nombre or "").strip().lower()
+        current_email = (self.correo or "").strip().lower()
+        return current_name == protected_username or current_email == protected_email
     
     @property
     def tiene_rol_temporal(self):

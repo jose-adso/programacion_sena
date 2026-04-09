@@ -3,6 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_mail import Mail
 import os
+import secrets
+from urllib.parse import quote_plus
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
 
@@ -17,10 +19,15 @@ mail = Mail()
 def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="../static")
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me-in-production")
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
-        "DATABASE_URL",
-        "postgresql://postgres:MB35mESjUg7B%40@75.119.147.138:5432/postgres"
-    )
+
+    db_host = os.getenv("DB_HOST", "38.242.137.70")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("DB_NAME", "postgres")
+    db_user = os.getenv("DB_USER", "postgres")
+    db_password = os.getenv("DB_PASSWORD", "zJmO99T7siPFYb5BnMy9Ixrhn0UJZZo6hoHJjSmtSCa15T12hMJJ7bJ3Rdx0Nv5B")
+    default_database_url = f"postgresql://{db_user}:{quote_plus(db_password)}@{db_host}:{db_port}/{db_name}"
+
+    app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", default_database_url)
     app.config["APP_BASE_URL"] = os.getenv("APP_BASE_URL", "")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["PERMANENT_SESSION_LIFETIME"] = 300  # 5 minutos en segundos
@@ -49,8 +56,12 @@ def create_app():
     mail.init_app(app)
 
     with app.app_context():
+        from app.models import competency, training, users  # noqa: F401
+
         db.create_all()
         ensure_training_program_columns()
+        ensure_competency_text_columns()
+        ensure_base_super_admin()
 
     from app.models.users import Users
     from datetime import datetime
@@ -131,3 +142,81 @@ def ensure_training_program_columns():
         if current_length is not None and current_length < 150:
             db.session.execute(text("ALTER TABLE training_program ALTER COLUMN location_municipality TYPE VARCHAR(150)"))
             db.session.commit()
+
+
+def ensure_competency_text_columns():
+    """Amplía columnas de competencias a TEXT para soportar descripciones largas."""
+    inspector = inspect(db.engine)
+    table_names = set(inspector.get_table_names())
+
+    for table_name in ("competency_record", "calendar_assignment"):
+        if table_name not in table_names:
+            continue
+
+        columns = {column["name"]: column for column in inspector.get_columns(table_name)}
+        competencia_column = columns.get("competencia")
+
+        if competencia_column is None:
+            continue
+
+        current_length = getattr(competencia_column["type"], "length", None)
+        if current_length is not None:
+            db.session.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN competencia TYPE TEXT"))
+            db.session.commit()
+
+
+def ensure_base_super_admin():
+    """Garantiza que la cuenta base de super admin exista y conserve su acceso."""
+    from app.models.users import Users
+
+    admin_username = "joserojas"
+    admin_email = "jhoset40@gmail.com"
+    admin_password = (os.getenv("ADMIN_PASSWORD") or "").strip()
+
+    admin_user = Users.query.filter(
+        (db.func.lower(Users.nombre) == admin_username.lower())
+        | (db.func.lower(Users.correo) == admin_email)
+    ).first()
+
+    if not admin_user:
+        password_to_use = admin_password or secrets.token_urlsafe(16)
+        admin_user = Users(
+            nombre=admin_username,
+            correo=admin_email,
+            telefono="",
+            direccion="",
+            rol="super admin",
+            must_change_password=False,
+            perfil_profesional=""
+        )
+        admin_user.password = password_to_use
+        db.session.add(admin_user)
+        db.session.commit()
+
+        if not admin_password:
+            print(f"\n🔐 Contraseña temporal del super admin generada: {password_to_use}")
+            print("   Guárdala en la variable ADMIN_PASSWORD para mantenerla fija.\n")
+        return
+
+    updated = False
+
+    if (admin_user.correo or "").strip().lower() != admin_email:
+        admin_user.correo = admin_email
+        updated = True
+
+    if admin_user.rol != "super admin":
+        admin_user.rol = "super admin"
+        updated = True
+
+    if admin_user.temp_rol is not None or admin_user.temp_rol_start is not None or admin_user.temp_rol_end is not None:
+        admin_user.temp_rol = None
+        admin_user.temp_rol_start = None
+        admin_user.temp_rol_end = None
+        updated = True
+
+    if admin_user.must_change_password:
+        admin_user.must_change_password = False
+        updated = True
+
+    if updated:
+        db.session.commit()

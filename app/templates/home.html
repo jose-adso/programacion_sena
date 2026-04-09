@@ -1710,6 +1710,15 @@ function renderCompetenciesContainer(data) {
         const jornadaClass = primeraJornada === 7 ? 'bg-primary' : (primeraJornada === 12 ? 'bg-warning text-dark' : 'bg-dark');
         const borderClass = primeraJornada === 7 ? 'border-primary' : (primeraJornada === 12 ? 'border-warning' : 'border-dark');
         const jornadaBadges = jornadaLabels.map(l => `<span class="badge bg-light text-dark ms-1">${l}</span>`).join('');
+        const encodedPayload = encodeURIComponent(JSON.stringify({
+            instructor: item.instructor || '',
+            subject: item.subject || '',
+            ficha: item.ficha || '',
+            programId: item.program_id || '',
+            assignmentId: item.assignment_id || '',
+            competencia: item.competencia || '',
+            resultado: item.resultado || ''
+        }));
         
         html += `
             <div class="col-md-6 mb-3">
@@ -1739,7 +1748,7 @@ function renderCompetenciesContainer(data) {
                         </div>
                         
                         <button class="btn btn-sm ${isComplete ? 'btn-outline-success' : 'btn-warning'}" 
-                                onclick="openCompetencyModal('${item.instructor}', '${item.subject}', '${item.ficha}', ${item.program_id}, ${item.assignment_id}, '${item.competencia || ''}', '${item.resultado || ''}')">
+                                onclick="openCompetencyModalFromPayload('${encodedPayload}')">
                             <i class="bi bi-${isComplete ? 'pencil' : 'plus-circle'}"></i> 
                             ${isComplete ? 'Editar' : 'Agregar'} Competencia
                         </button>
@@ -1753,6 +1762,24 @@ function renderCompetenciesContainer(data) {
     initializeLearningResultWheel(container);
 }
 
+function openCompetencyModalFromPayload(encodedPayload) {
+    try {
+        const payload = JSON.parse(decodeURIComponent(encodedPayload || ''));
+        openCompetencyModal(
+            payload.instructor || '',
+            payload.subject || '',
+            payload.ficha || '',
+            payload.programId || '',
+            payload.assignmentId || '',
+            payload.competencia || '',
+            payload.resultado || ''
+        );
+    } catch (error) {
+        console.error('No se pudo abrir el modal de edición:', error);
+        alert('No se pudieron cargar los datos de la competencia para editar.');
+    }
+}
+
 function openCompetencyModal(instructor, subject, ficha, programId, assignmentId, competencia, resultado) {
     document.getElementById('comp-instructor-name').textContent = instructor;
     document.getElementById('comp-subject').textContent = subject;
@@ -1762,6 +1789,22 @@ function openCompetencyModal(instructor, subject, ficha, programId, assignmentId
     document.getElementById('comp-competencia').value = competencia || '';
     document.getElementById('comp-resultado').value = resultado || '';
 
+    const title = document.querySelector('#competencyModal .modal-title');
+    const saveButton = document.querySelector('#competencyModal .btn-info');
+    const hasExistingCompetency = Boolean((competencia || '').trim());
+
+    if (title) {
+        title.textContent = hasExistingCompetency
+            ? 'Editar Competencia y Resultado de Aprendizaje'
+            : 'Agregar Competencia y Resultado de Aprendizaje';
+    }
+
+    if (saveButton) {
+        saveButton.textContent = hasExistingCompetency
+            ? 'Actualizar Competencia y Resultado'
+            : 'Guardar Competencia y Resultado';
+    }
+
     loadProgramCompetencies('comp', programId, competencia || '', resultado || '');
     
     const modal = new bootstrap.Modal(document.getElementById('competencyModal'));
@@ -1770,8 +1813,11 @@ function openCompetencyModal(instructor, subject, ficha, programId, assignmentId
 
 function saveCompetency() {
     const assignmentId = document.getElementById('comp-assignment-id').value;
+    const programId = document.getElementById('comp-program-id').value;
+    const instructor = document.getElementById('comp-instructor-name').textContent.trim();
     const competencia = document.getElementById('comp-competencia').value.trim();
     const resultado = document.getElementById('comp-resultado').value.trim();
+    const weekIndex = parseInt(document.getElementById('competency-week-select').value, 10) || 0;
     
     if (!assignmentId) {
         alert('Error: No se encontró la asignación');
@@ -1782,30 +1828,48 @@ function saveCompetency() {
         alert('Por favor ingrese la competencia');
         return;
     }
-    
-    fetch('/update_assignment_competency', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            assignment_id: parseInt(assignmentId),
-            competencia: competencia,
-            resultado: resultado
+
+    fetch(`/get_month_weeks?month=${currentMonth}&year=${currentYear}`)
+        .then(response => response.json())
+        .then(weekData => {
+            const weeks = weekData.weeks || [];
+            const selectedWeek = weeks[weekIndex];
+            const payload = {
+                assignment_id: parseInt(assignmentId, 10),
+                program_id: programId ? parseInt(programId, 10) : null,
+                instructor_name: instructor,
+                competencia: competencia,
+                resultado: resultado,
+                apply_to_week: Boolean(selectedWeek),
+                week_start: selectedWeek ? selectedWeek.start : null,
+                week_end: selectedWeek ? selectedWeek.end : null,
+                month: currentMonth,
+                year: currentYear
+            };
+
+            return fetch('/update_assignment_competency', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
         })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            bootstrap.Modal.getInstance(document.getElementById('competencyModal')).hide();
-            loadCompetenciesByWeek();
-            loadCalendar();
-        } else {
-            alert('Error al guardar: ' + (data.error || 'Desconocido'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error de conexión');
-    });
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('competencyModal')).hide();
+                if ((data.updated_count || 0) > 1) {
+                    alert(`Competencia actualizada en ${data.updated_count} asignaciones de la semana.`);
+                }
+                loadCompetenciesByWeek();
+                loadCalendar();
+            } else {
+                alert('Error al guardar: ' + (data.error || 'Desconocido'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error de conexión');
+        });
 }
 
 // Variables para el modal de semana completa

@@ -19,7 +19,7 @@ services:
     ports:
       - "8010:8010"
     environment:
-      DATABASE_URL: postgresql://postgres:MB35mESjUg7B%40@vwcwc0w4ssskwc8owgo40kc4:5432/postgres
+      DATABASE_URL: postgresql://postgres:zJmO99T7siPFYb5BnMy9Ixrhn0UJZZo6hoHJjSmtSCa15T12hMJJ7bJ3Rdx0Nv5B@38.242.137.70:5432/postgres
     depends_on:
       - postgres
 

@@ -67,14 +67,23 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if can_manage_users %}
-                    {% if user.rol != current_user.rol_activo or user.id != current_user.id %}
+                    {% if user.is_base_super_admin %}
+                    <span class="badge bg-dark">Protegido</span>
+                    {% if is_base_super_admin and user.id == current_user.id %}
+                    <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}')">
+                        Cambiar Mi Rol
+                    </button>
+                    {% endif %}
+                    {% elif can_manage_users %}
+                    {% if user.id != current_user.id %}
                     <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}')">
                         Cambiar Rol
                     </button>
                     <form action="{{ url_for('admin.eliminar', user_id=user.id) }}" method="POST" onsubmit="return confirm('¿Está seguro de eliminar este usuario?');" style="display:inline;">
                         <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
                     </form>
+                    {% else %}
+                    <span class="text-muted small">Sesión actual</span>
                     {% endif %}
                     {% elif is_base_super_admin and user.id == current_user.id %}
                     <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}')">
@@ -87,7 +96,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="7" class="text-center text-muted">No hay usuarios con rol administrador, gestor o instructor para mostrar.</td>
+                <td colspan="7" class="text-center text-muted">No hay usuarios para mostrar.</td>
             </tr>
             {% endfor %}
         </tbody>
