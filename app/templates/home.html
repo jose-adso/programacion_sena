@@ -387,7 +387,7 @@
                     <label class="form-label fw-bold">Competencias cargadas para esta ficha:</label>
                     <select id="comp-catalog-select" class="form-select" multiple size="8" onchange="applySelectedCatalogCompetency('comp')">
                     </select>
-                    <div class="form-text">Ahora puede seleccionar varias competencias con <strong>Ctrl + clic</strong>. Las opciones en verde ya fueron guardadas previamente.</div>
+                    <div class="form-text">Ahora puede seleccionar varias competencias con <strong>Ctrl + clic</strong>. Las opciones en verde ya fueron usadas antes y <strong>sí pueden volver a seleccionarse</strong> en otra semana si necesitas continuarlas.</div>
                 </div>
                 
                 <div class="mb-3">
@@ -481,7 +481,7 @@
                     <label class="form-label fw-bold">Competencias cargadas para esta ficha:</label>
                     <select id="weekly-catalog-select" class="form-select" multiple size="8" onchange="applySelectedCatalogCompetency('weekly')">
                     </select>
-                    <div class="form-text">Ahora puede seleccionar varias competencias con <strong>Ctrl + clic</strong>. Las opciones en verde ya fueron guardadas previamente.</div>
+                    <div class="form-text">Ahora puede seleccionar varias competencias con <strong>Ctrl + clic</strong>. Las opciones en verde ya fueron usadas antes y <strong>sí pueden volver a seleccionarse</strong> en otra semana si necesitas continuarlas.</div>
                 </div>
                 
                 <div class="mb-3">
@@ -1505,21 +1505,6 @@ function applySelectedCatalogCompetency(prefix) {
         return;
     }
 
-    const savedKeys = new Set(currentSavedCompetencyKeys[prefix] || []);
-    const invalidItems = selectedItems.filter(item => {
-        const selectedKey = buildCompetencySelectionKey(item.competencia, item.resultado);
-        return Boolean(item.is_assigned) && !savedKeys.has(selectedKey);
-    });
-
-    if (invalidItems.length > 0) {
-        alert('Esta transversal ya fue dictada para esta ficha. Por eso permanece en verde y no debe seleccionarse de nuevo.');
-        Array.from(select.options).forEach(option => {
-            option.selected = previousValues.includes(String(option.value));
-        });
-        updateCatalogSelectAppearance(select);
-        return;
-    }
-
     competenciaField.value = formatCatalogFieldValue(selectedItems, 'competencia');
     resultadoField.value = formatCatalogFieldValue(selectedItems, 'resultado');
     lastCatalogSelectedValues[prefix] = selectedValues;
@@ -1574,7 +1559,7 @@ function loadProgramCompetencies(prefix, programId, currentCompetencia = '', cur
 
                 styleCatalogOption(option, isAssigned, isCurrentSelection);
                 if (isAssigned && !isCurrentSelection) {
-                    option.title = 'Ya seleccionada para esta ficha';
+                    option.title = 'Ya fue usada antes en esta ficha, pero puedes volver a seleccionarla en otra semana si la necesitas.';
                 }
 
                 select.appendChild(option);

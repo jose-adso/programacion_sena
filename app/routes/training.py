@@ -853,7 +853,14 @@ def delete_competencies_group(program_id):
         flash("No tienes permiso para eliminar competencias", "danger")
         return redirect(url_for("training.list_competencies"))
 
-    program = TrainingProgram.query.get_or_404(program_id)
+    if not program_id or program_id <= 0:
+        flash("ID de programa inválido", "danger")
+        return redirect(url_for("training.list_competencies"))
+
+    program = TrainingProgram.query.get(program_id)
+    if not program:
+        flash("Programa no encontrado", "danger")
+        return redirect(url_for("training.list_competencies"))
 
     try:
         deleted_count = CompetencyRecord.query.filter_by(training_program_id=program_id).delete()

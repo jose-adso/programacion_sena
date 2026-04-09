@@ -54,7 +54,7 @@
                     {% if current_user.rol_activo != 'gestor' %}
                     <a href="{{ url_for('training.edit_program', program_id=program.id) }}" class="btn btn-sm btn-outline-primary">Editar</a>
                     <form action="{{ url_for('training.delete_program', program_id=program.id) }}" method="POST" onsubmit="return confirm('¿Está seguro de eliminar este programa?');" class="d-inline">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                        <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size: 0.7rem;">Eliminar</button>
                     </form>
                     {% else %}
                     <span class="text-muted small">Solo lectura</span>

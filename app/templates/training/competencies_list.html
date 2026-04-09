@@ -24,41 +24,53 @@
             </div>
 
             {% if grouped_competencies %}
-                <div id="competencyGroups">
+                <div id="competencyGroups" class="accordion">
                     {% for group in grouped_competencies %}
                     <div class="card border-secondary mb-3 competency-group">
-                        <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div
+                            class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2 competency-toggle"
+                            role="button"
+                            tabindex="0"
+                            style="cursor: pointer;"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#competency-group-{{ loop.index }}"
+                            aria-expanded="false"
+                            aria-controls="competency-group-{{ loop.index }}"
+                        >
                             <div>
                                 <strong>Ficha {{ group.ficha_number }}</strong>
                                 <div class="text-muted small">{{ group.program_name }}</div>
                             </div>
                             <div class="d-flex align-items-center gap-2">
                                 <span class="badge bg-dark">{{ group.records|length }} registros</span>
-                                {% if current_user.rol_activo in ['super admin', 'administrador'] %}
-                                <form method="POST" action="{{ url_for('training.delete_competencies_group', program_id=group.training_program_id) }}" onsubmit="return confirm('¿Eliminar todos los registros de competencias y resultados de la ficha {{ group.ficha_number }}?');" class="m-0">
-                                    <button type="submit" class="btn btn-sm btn-danger">Eliminar todo</button>
+                                {% if current_user.rol_activo in ['super admin', 'administrador'] and group.training_program_id %}
+                                <form method="POST" action="{{ url_for('training.delete_competencies_group', program_id=group.training_program_id) }}" onsubmit="event.stopPropagation(); return confirm('¿Eliminar todos los registros de competencias y resultados de la ficha {{ group.ficha_number }}?');" onclick="event.stopPropagation()" class="m-0 d-inline-block flex-shrink-0">
+                                    <button type="submit" class="badge bg-danger border-0 py-1" style="padding-left: 0.35rem; padding-right: 0.35rem; font-size: 0.68rem; line-height: 1; width: auto; display: inline-block;">Eliminar</button>
                                 </form>
                                 {% endif %}
+                                <span class="text-muted small competency-toggle-label">Desplegar</span>
                             </div>
                         </div>
-                        <div class="card-body p-0">
-                            <div class="table-responsive">
-                                <table class="table table-striped table-hover mb-0">
-                                    <thead class="table-dark">
-                                        <tr>
-                                            <th style="width: 45%;">Competencia</th>
-                                            <th>Resultado de Aprendizaje</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for record in group.records %}
-                                        <tr class="competency-row">
-                                            <td>{{ record.competencia }}</td>
-                                            <td>{{ record.resultado or 'Sin resultado' }}</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
+                        <div id="competency-group-{{ loop.index }}" class="collapse" data-bs-parent="#competencyGroups">
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table table-striped table-hover mb-0">
+                                        <thead class="table-dark">
+                                            <tr>
+                                                <th style="width: 45%;">Competencia</th>
+                                                <th>Resultado de Aprendizaje</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for record in group.records %}
+                                            <tr class="competency-row">
+                                                <td>{{ record.competencia }}</td>
+                                                <td>{{ record.resultado or 'Sin resultado' }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -79,12 +91,27 @@ document.addEventListener('DOMContentLoaded', function () {
     const groupsContainer = document.getElementById('competencyGroups');
     if (!searchInput || !groupsContainer) return;
 
+    const updateToggleLabels = () => {
+        groupsContainer.querySelectorAll('.competency-group').forEach(function (group) {
+            const collapseEl = group.querySelector('.collapse');
+            const labelEl = group.querySelector('.competency-toggle-label');
+            if (!collapseEl || !labelEl) return;
+            labelEl.textContent = collapseEl.classList.contains('show') ? 'Ocultar' : 'Desplegar';
+        });
+    };
+
+    groupsContainer.querySelectorAll('.collapse').forEach(function (collapseEl) {
+        collapseEl.addEventListener('shown.bs.collapse', updateToggleLabels);
+        collapseEl.addEventListener('hidden.bs.collapse', updateToggleLabels);
+    });
+
     searchInput.addEventListener('input', function () {
         const term = this.value.toLowerCase().trim();
         const groups = groupsContainer.querySelectorAll('.competency-group');
 
         groups.forEach(function (group) {
             const rows = group.querySelectorAll('.competency-row');
+            const collapseEl = group.querySelector('.collapse');
             let visibleRows = 0;
 
             rows.forEach(function (row) {
@@ -95,8 +122,20 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             group.style.display = visibleRows > 0 ? '' : 'none';
+
+            if (collapseEl) {
+                if (term && visibleRows > 0) {
+                    collapseEl.classList.add('show');
+                } else if (!term) {
+                    collapseEl.classList.remove('show');
+                }
+            }
         });
+
+        updateToggleLabels();
     });
+
+    updateToggleLabels();
 });
 </script>
 {% endblock %}

@@ -772,20 +772,6 @@ def update_assignment_competency():
 
         assignments_to_update = query.all() or [assignment]
 
-    exclude_ids = [item.id for item in assignments_to_update if item and item.id]
-    program_id_for_validation = assignments_to_update[0].training_program_id if assignments_to_update else assignment.training_program_id
-
-    if _program_has_duplicate_competency(
-        program_id_for_validation,
-        competencia,
-        resultado,
-        exclude_ids=exclude_ids,
-    ):
-        return jsonify({
-            "success": False,
-            "error": "Esta competencia y resultado ya fueron seleccionados para esta ficha. Las opciones en verde no se pueden repetir.",
-        }), 400
-    
     for item in assignments_to_update:
         item.competencia = competencia
         item.resultado = resultado
@@ -837,17 +823,6 @@ def save_weekly_competency():
         CalendarAssignment.day.in_(days_to_update)
     ).all()
     
-    if _program_has_duplicate_competency(
-        program_id,
-        competencia,
-        resultado,
-        exclude_ids=[assign.id for assign in assignments],
-    ):
-        return jsonify({
-            "success": False,
-            "error": "Esta competencia y resultado ya fueron seleccionados para esta ficha. Elige otra opción disponible.",
-        }), 400
-
     updated_count = 0
     for assign in assignments:
         assign.competencia = competencia
