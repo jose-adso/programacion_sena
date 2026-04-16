@@ -158,13 +158,33 @@
     });
     </script>
     {% if current_user.is_authenticated %}
+    <div id="inactivity-timer" class="position-fixed bottom-0 end-0 bg-dark text-white px-3 py-2 m-3 rounded small" style="z-index: 9999; display: none;">
+        Sesión expira en: <span id="timer-display">5</span> min
+    </div>
     <script>
     (function() {
-        const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
+        const TIMEOUT_MS = 5 * 60 * 1000;
         let timer;
+        let display = document.getElementById('timer-display');
+        let timerBox = document.getElementById('inactivity-timer');
+        let lastActivity = new Date();
+        
+        if (display && timerBox) {
+            timerBox.style.display = 'block';
+        }
+
+        function updateDisplay() {
+            if (display) {
+                const elapsed = new Date().getTime() - lastActivity.getTime();
+                const minutesLeft = Math.max(0, 5 - Math.ceil(elapsed / 60000));
+                display.textContent = minutesLeft;
+            }
+        }
 
         function resetTimer() {
+            lastActivity = new Date();
             clearTimeout(timer);
+            if (display) display.textContent = '5';
             timer = setTimeout(function() {
                 window.location.href = '{{ url_for("auth.logout") }}';
             }, TIMEOUT_MS);
@@ -174,6 +194,7 @@
             document.addEventListener(evt, resetTimer, true);
         });
 
+        setInterval(updateDisplay, 10000);
         resetTimer();
     })();
     </script>
