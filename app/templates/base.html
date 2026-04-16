@@ -159,7 +159,7 @@
     </script>
     {% if current_user.is_authenticated %}
     <div id="inactivity-timer" class="position-fixed bottom-0 end-0 bg-dark text-white px-3 py-2 m-3 rounded small" style="z-index: 9999; display: none;">
-        Sesión expira en: <span id="timer-display">5</span> min
+        Sesión expira en: <span id="timer-display">5:00</span>
     </div>
     <script>
     (function() {
@@ -176,15 +176,17 @@
         function updateDisplay() {
             if (display) {
                 const elapsed = new Date().getTime() - lastActivity.getTime();
-                const minutesLeft = Math.max(0, 5 - Math.ceil(elapsed / 60000));
-                display.textContent = minutesLeft;
+                const remaining = Math.max(0, TIMEOUT_MS - elapsed);
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                display.textContent = minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
             }
         }
 
         function resetTimer() {
             lastActivity = new Date();
             clearTimeout(timer);
-            if (display) display.textContent = '5';
+            if (display) display.textContent = '5:00';
             timer = setTimeout(function() {
                 window.location.href = '{{ url_for("auth.logout") }}';
             }, TIMEOUT_MS);
@@ -194,7 +196,7 @@
             document.addEventListener(evt, resetTimer, true);
         });
 
-        setInterval(updateDisplay, 10000);
+        setInterval(updateDisplay, 1000);
         resetTimer();
     })();
     </script>
