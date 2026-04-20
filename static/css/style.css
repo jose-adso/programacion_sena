@@ -273,6 +273,19 @@ footer {
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
 
+/* Horas por Instructor scroll container */
+#horas-container {
+    max-height: 450px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#horas-container .table-responsive {
+    max-height: none;
+    overflow-y: visible;
+    margin-bottom: 0;
+}
+
 /* Input group styling */
 .input-group-text {
     background-color: var(--sena-green);
