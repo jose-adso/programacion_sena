@@ -112,6 +112,18 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(training_bp)
 
+    @app.route('/service-worker.js')
+    def service_worker():
+        """Sirve el service worker desde la raíz para PWA"""
+        from flask import send_from_directory
+        return send_from_directory(app.static_folder, 'service-worker.js', mimetype='application/javascript')
+
+    @app.route('/offline.html')
+    def offline():
+        """Página offline para cuando no hay conexión"""
+        from flask import send_from_directory
+        return send_from_directory(app.static_folder, 'offline.html')
+
     return app
 
 
