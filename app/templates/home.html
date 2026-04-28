@@ -533,20 +533,27 @@ let selectedDayInfo = null;
 let currentViewMode = localStorage.getItem('calendar_view_mode') || 'month';
 let currentWeek = parseInt(localStorage.getItem('calendar_week') || '0');
 
-document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('month-select').value = currentMonth;
-    document.getElementById('year-select').value = currentYear;
-    document.getElementById('view-mode').value = currentViewMode;
-    document.getElementById('week-select').value = currentWeek;
-    
-    // Mostrar/ocultar selector de semana según el modo
-    const weekSelect = document.getElementById('week-select');
-    weekSelect.style.display = currentViewMode === 'week' ? 'inline-block' : 'none';
-    
-    loadCalendar();
-    loadAssignmentsPanel();
-    loadHorasAsignadas();
-});
+ document.addEventListener('DOMContentLoaded', function() {
+     document.getElementById('month-select').value = currentMonth;
+     document.getElementById('year-select').value = currentYear;
+     document.getElementById('view-mode').value = currentViewMode;
+     document.getElementById('week-select').value = currentWeek;
+     
+     // Mostrar/ocultar selector de semana según el modo
+     const weekSelect = document.getElementById('week-select');
+     weekSelect.style.display = currentViewMode === 'week' ? 'inline-block' : 'none';
+     
+     loadCalendar();
+     loadAssignmentsPanel();
+     loadHorasAsignadas();
+     
+     // Auto-refresh de calendario, asignaciones y horas cada 30 segundos
+     setInterval(function() {
+         loadCalendar();
+         loadAssignmentsPanel();
+         loadHorasAsignadas();
+     }, 30000);
+ });
 
 function changeViewMode() {
     currentViewMode = document.getElementById('view-mode').value;
@@ -569,17 +576,19 @@ function changeWeek(selectElement) {
     loadCalendar();
 }
 
-function changeMonth(selectElement) {
-    currentMonth = parseInt(selectElement.value);
-    localStorage.setItem('calendar_month', currentMonth.toString());
-    loadCalendar();
-}
+ function changeMonth(selectElement) {
+     currentMonth = parseInt(selectElement.value);
+     localStorage.setItem('calendar_month', currentMonth.toString());
+     loadCalendar();
+     loadAssignmentsPanel();
+ }
 
-function changeYear(inputElement) {
-    currentYear = parseInt(inputElement.value);
-    localStorage.setItem('calendar_year', currentYear.toString());
-    loadCalendar();
-}
+ function changeYear(inputElement) {
+     currentYear = parseInt(inputElement.value);
+     localStorage.setItem('calendar_year', currentYear.toString());
+     loadCalendar();
+     loadAssignmentsPanel();
+ }
 
 function applyFilters() {
     loadCalendar();
@@ -1310,22 +1319,23 @@ function deleteAssignment() {
         }).then(response => response.json());
     });
     
-    Promise.all(promises)
-        .then(results => {
-            const allSuccess = results.every(r => r.success);
-            if (allSuccess) {
-            bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
-            loadCalendar();
-            loadAssignmentsPanel();
-        } else {
-            alert('Error al eliminar: ' + (data.error || 'Desconocido'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error de conexión');
-    });
-}
+     Promise.all(promises)
+         .then(results => {
+             const allSuccess = results.every(r => r.success);
+             if (allSuccess) {
+             bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
+             loadCalendar();
+             loadAssignmentsPanel();
+             loadHorasAsignadas();
+         } else {
+             alert('Error al eliminar: ' + (data.error || 'Desconocido'));
+         }
+     })
+     .catch(error => {
+         console.error('Error:', error);
+         alert('Error de conexión');
+     });
+ }
 
 // Funciones para Competencias y Resultados
 let currentCompetencyAssignments = [];
