@@ -609,7 +609,8 @@ function saveMyProfessionalProfile() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
             perfil_profesional: input.value
-        })
+        }),
+        cache: 'no-cache'
     })
     .then(response => response.json())
     .then(data => {
@@ -726,7 +727,7 @@ function loadAssignmentsPanel() {
         url += `&professional_profile=${encodeURIComponent(professionalProfile)}`;
     }
     
-    fetch(url)
+    fetch(url, { cache: 'no-cache' })
         .then(response => response.json())
         .then(data => {
             const panel = document.getElementById('assignments-panel');
@@ -901,7 +902,10 @@ function loadHorasAsignadas() {
         if (instructorName) urlMes += `&instructor_name=${encodeURIComponent(instructorName)}`;
         if (professionalProfile) urlMes += `&professional_profile=${encodeURIComponent(professionalProfile)}`;
 
-        Promise.all([fetch(urlSem).then(r => r.json()), fetch(urlMes).then(r => r.json())])
+        Promise.all([
+            fetch(urlSem, { cache: 'no-cache' }).then(r => r.json()),
+            fetch(urlMes, { cache: 'no-cache' }).then(r => r.json())
+        ])
             .then(([dataSem, dataMes]) => {
                 const assignsSem = dataSem.assignments || {};
                 // Convertir formato de semana al mismo de mes (agrupar por instructor)
@@ -929,7 +933,7 @@ function loadHorasAsignadas() {
         if (programId) urlMes += `&program_id=${programId}`;
         if (instructorName) urlMes += `&instructor_name=${encodeURIComponent(instructorName)}`;
         if (professionalProfile) urlMes += `&professional_profile=${encodeURIComponent(professionalProfile)}`;
-        fetch(urlMes)
+        fetch(urlMes, { cache: 'no-cache' })
             .then(r => r.json())
             .then(data => {
                 container.innerHTML = renderTabla(buildResumen(data), 'Instructor');
@@ -970,7 +974,7 @@ function loadCalendar() {
         url += `&professional_profile=${encodeURIComponent(professionalProfile)}`;
     }
     
-    fetch(url)
+    fetch(url, { cache: 'no-cache' })
         .then(response => response.json())
         .then(data => {
             if (currentViewMode === 'week') {
@@ -1239,7 +1243,8 @@ function saveAssignment() {
                 month: currentMonth,
                 year: currentYear,
                 hour: jornada
-            })
+            }),
+            cache: 'no-cache'
         }).then(response => response.json());
     });
     
@@ -1300,7 +1305,8 @@ function deleteAssignment() {
                 month: currentMonth,
                 year: currentYear,
                 hour: jornada
-            })
+            }),
+            cache: 'no-cache'
         }).then(response => response.json());
     });
     
@@ -1561,7 +1567,7 @@ function loadProgramCompetencies(prefix, programId, currentCompetencia = '', cur
         return;
     }
 
-    fetch(`/get_program_competencies?program_id=${encodeURIComponent(programId)}`)
+    fetch(`/get_program_competencies?program_id=${encodeURIComponent(programId)}`, { cache: 'no-cache' })
         .then(response => response.json())
         .then(data => {
             const select = document.getElementById(getCatalogSelectId(prefix));
@@ -1649,7 +1655,7 @@ function loadCompetenciesByWeek() {
     if (instructorName) url += `&instructor_name=${encodeURIComponent(instructorName)}`;
     if (professionalProfile) url += `&professional_profile=${encodeURIComponent(professionalProfile)}`;
     
-    fetch(url)
+    fetch(url, { cache: 'no-cache' })
         .then(response => response.json())
         .then(data => {
             currentCompetencyAssignments = data.assignments || {};
@@ -1857,7 +1863,7 @@ function saveCompetency() {
         return;
     }
 
-    fetch(`/get_month_weeks?month=${currentMonth}&year=${currentYear}`)
+    fetch(`/get_month_weeks?month=${currentMonth}&year=${currentYear}`, { cache: 'no-cache' })
         .then(response => response.json())
         .then(weekData => {
             const weeks = weekData.weeks || [];
@@ -1878,7 +1884,8 @@ function saveCompetency() {
             return fetch('/update_assignment_competency', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                cache: 'no-cache'
             });
         })
         .then(response => response.json())
@@ -1970,7 +1977,7 @@ function openWeeklyCompetencyModal() {
     const month = currentMonth;
     const year = currentYear;
     
-    fetch(`/get_month_weeks?month=${month}&year=${year}`)
+    fetch(`/get_month_weeks?month=${month}&year=${year}`, { cache: 'no-cache' })
         .then(response => response.json())
         .then(data => {
             weeklyWeeksData = data.weeks || [];
@@ -2026,7 +2033,7 @@ function loadWeeklySubjects() {
     const month = currentMonth;
     const year = currentYear;
     
-    fetch(`/get_assignments_by_week?month=${month}&year=${year}&week=${week}`)
+    fetch(`/get_assignments_by_week?month=${month}&year=${year}&week=${week}`, { cache: 'no-cache' })
         .then(response => response.json())
         .then(data => {
             const assignments = data.assignments || {};
@@ -2137,7 +2144,8 @@ function saveWeeklyCompetency() {
             week_end: weekEnd,
             month: month,
             year: year
-        })
+        }),
+        cache: 'no-cache'
     })
     .then(response => response.json())
     .then(data => {
@@ -2169,7 +2177,7 @@ function openEquipoModal() {
     lista.innerHTML = '<p class="text-muted small">Cargando...</p>';
     document.getElementById('equipo-search').value = '';
 
-    fetch('/gestor/equipo')
+    fetch('/gestor/equipo', { cache: 'no-cache' })
         .then(r => r.json())
         .then(data => {
             _equipoActual = new Set(data.equipo || []);
@@ -2241,7 +2249,8 @@ function saveEquipo() {
     fetch('/gestor/equipo', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({instructor_ids: ids})
+        body: JSON.stringify({instructor_ids: ids}),
+        cache: 'no-cache'
     })
     .then(r => r.json())
     .then(data => {

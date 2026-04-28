@@ -215,7 +215,8 @@ function cambiarRol() {
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        cache: 'no-cache'
     })
     .then(response => {
         console.log('Status:', response.status);
