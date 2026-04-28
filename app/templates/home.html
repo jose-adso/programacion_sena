@@ -91,7 +91,7 @@
                                 <option value="week">Semana</option>
                             </select>
                             <!-- Selector de semana (solo visible en modo semana) -->
-                            <select id="week-select" class="form-select form-select-sm" style="width: 80px; display: none;" onchange="loadCalendar()">
+                            <select id="week-select" class="form-select form-select-sm" style="width: 80px; display: none;" onchange="changeWeek(this)">
                                 <option value="0">Sem 1</option>
                                 <option value="1">Sem 2</option>
                                 <option value="2">Sem 3</option>
@@ -99,7 +99,7 @@
                                 <option value="4">Sem 5</option>
                             </select>
                             <!-- Mes y Año -->
-                            <select id="month-select" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="loadCalendar()">
+                            <select id="month-select" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="changeMonth(this)">
                                 <option value="0">Enero</option>
                                 <option value="1">Febrero</option>
                                 <option value="2">Marzo</option>
@@ -113,7 +113,7 @@
                                 <option value="10">Noviembre</option>
                                 <option value="11">Diciembre</option>
                             </select>
-                            <input type="number" id="year-select" class="form-control form-control-sm d-inline-block" style="width: 80px;" value="2026" min="2020" max="2030" onchange="loadCalendar()">
+                            <input type="number" id="year-select" class="form-control form-control-sm d-inline-block" style="width: 80px;" value="2026" min="2020" max="2030" onchange="changeYear(this)">
                         </div>
                     </div>
                 </div>
@@ -523,16 +523,26 @@ let currentUserName = {{ username | tojson }};
 let currentUserAsignatura = {{ current_user_asignatura | tojson }};
 let isGestor = currentUserRol === 'gestor';
 
-let currentMonth = new Date().getMonth();
-let currentYear = new Date().getFullYear();
+// Cargar mes/año desde localStorage o usar fecha actual
+let savedMonth = localStorage.getItem('calendar_month');
+let savedYear = localStorage.getItem('calendar_year');
+let currentMonth = savedMonth !== null ? parseInt(savedMonth) : new Date().getMonth();
+let currentYear = savedYear !== null ? parseInt(savedYear) : new Date().getFullYear();
 let currentAssignments = {};
 let selectedDayInfo = null;
-let currentViewMode = 'month';
-let currentWeek = 0;
+let currentViewMode = localStorage.getItem('calendar_view_mode') || 'month';
+let currentWeek = parseInt(localStorage.getItem('calendar_week') || '0');
 
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('month-select').value = currentMonth;
     document.getElementById('year-select').value = currentYear;
+    document.getElementById('view-mode').value = currentViewMode;
+    document.getElementById('week-select').value = currentWeek;
+    
+    // Mostrar/ocultar selector de semana según el modo
+    const weekSelect = document.getElementById('week-select');
+    weekSelect.style.display = currentViewMode === 'week' ? 'inline-block' : 'none';
+    
     loadCalendar();
     loadAssignmentsPanel();
     loadHorasAsignadas();
@@ -548,6 +558,38 @@ function changeViewMode() {
         weekSelect.style.display = 'none';
     }
     
+    // Persistir cambios
+    localStorage.setItem('calendar_view_mode', currentViewMode);
+    loadCalendar();
+}
+
+function changeWeek(selectElement) {
+    currentWeek = parseInt(selectElement.value);
+    localStorage.setItem('calendar_week', currentWeek.toString());
+    loadCalendar();
+}
+
+function changeMonth(selectElement) {
+    currentMonth = parseInt(selectElement.value);
+    localStorage.setItem('calendar_month', currentMonth.toString());
+    loadCalendar();
+}
+
+function changeYear(inputElement) {
+    currentYear = parseInt(inputElement.value);
+    localStorage.setItem('calendar_year', currentYear.toString());
+    loadCalendar();
+}
+
+function applyFilters() {
+    loadCalendar();
+    loadAssignmentsPanel();
+    loadHorasAsignadas();
+    loadCompetenciesByWeek();
+}
+    
+    // Persistir cambios
+    localStorage.setItem('calendar_view_mode', currentViewMode);
     loadCalendar();
 }
 
@@ -1208,6 +1250,7 @@ function saveAssignment() {
                 bootstrap.Modal.getInstance(document.getElementById('assignmentModal')).hide();
                 loadCalendar();
                 loadAssignmentsPanel();
+                loadHorasAsignadas();
             } else {
                 const errors = results.filter(r => !r.success).map(r => r.error || 'Desconocido');
                 alert('Error al guardar: ' + errors.join(', '));
