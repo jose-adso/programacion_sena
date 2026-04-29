@@ -8,6 +8,14 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='16 mar 2026, 09_19_27.png') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        /* Ocultar botón "Instalar App" */
+        button:has-text("Instalar App"),
+        button[aria-label*="Instalar"],
+        button.position-fixed.bottom-0.start-0 {
+            display: none !important;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar navbar-dark bg-dark fixed-top">
@@ -156,6 +164,39 @@
                 const alert = bootstrap.Alert.getOrCreateInstance(alertEl);
                 alert.close();
             }, 5000);
+        });
+
+        // Función para eliminar botón "Instalar App"
+        function removeInstallButton() {
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(btn => {
+                if (btn.textContent.includes('Instalar App') || 
+                    btn.textContent.includes('Install App') ||
+                    (btn.classList.contains('btn') && btn.classList.contains('btn-primary') && 
+                     btn.classList.contains('position-fixed'))) {
+                    btn.remove();
+                }
+            });
+        }
+
+        // Ejecutar al cargar
+        removeInstallButton();
+
+        // Usar MutationObserver para detectar cambios dinámicos
+        const observer = new MutationObserver(function(mutations) {
+            removeInstallButton();
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style']
+        });
+
+        // También bloquear el evento beforeinstallprompt
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
         });
     });
     </script>

@@ -596,18 +596,6 @@ function applyFilters() {
     loadHorasAsignadas();
     loadCompetenciesByWeek();
 }
-    
-    // Persistir cambios
-    localStorage.setItem('calendar_view_mode', currentViewMode);
-    loadCalendar();
-}
-
-function applyFilters() {
-    loadCalendar();
-    loadAssignmentsPanel();
-    loadHorasAsignadas();
-    loadCompetenciesByWeek();
-}
 
 function saveMyProfessionalProfile() {
     const input = document.getElementById('perfil-profesional-input');

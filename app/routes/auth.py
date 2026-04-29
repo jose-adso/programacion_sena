@@ -21,7 +21,7 @@ def password_is_strong(password):
 
 
 def find_user_for_login(identifier):
-    """Permite iniciar sesión por nombre; para el super admin solo se acepta `joserojas`."""
+    """Permite iniciar sesión por nombre; para el super admin se usa la cuenta base configurada."""
     normalized_identifier = (identifier or "").strip().lower()
     if not normalized_identifier:
         return None
@@ -31,11 +31,11 @@ def find_user_for_login(identifier):
         return user
 
     user = Users.query.filter(db.func.lower(Users.correo).like(f"{normalized_identifier}@%")).first()
-    if user and not user.is_base_super_admin:
+    if user:
         return user
 
     user = Users.query.filter(db.func.lower(Users.correo) == normalized_identifier).first()
-    if user and not user.is_base_super_admin:
+    if user:
         return user
 
     return None

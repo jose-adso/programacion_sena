@@ -7,19 +7,15 @@ app = create_app()
 
 with app.app_context():
     db.create_all()
-    admin_email = 'jhoset40@gmail.com'
+    admin_email = os.environ.get('SUPER_ADMIN_EMAIL', 'superadmin@example.com')
+    admin_name = os.environ.get('SUPER_ADMIN_NAME', 'superadmin')
     
     # Solo crear el usuario admin si no existe
-    admin_user = Users.query.filter_by(nombre='joserojas').first()
+    admin_user = Users.query.filter_by(nombre=admin_name).first()
     if not admin_user:
-        admin_password = os.getenv('ADMIN_PASSWORD')
-        if not admin_password:
-            admin_password = secrets.token_urlsafe(16)
-            print(f"\n🔐 Contraseña admin generada: {admin_password}")
-            print(f"   Guárdala en la variable ADMIN_PASSWORD\n")
-        
+        admin_password = os.environ.get('ADMIN_PASSWORD', secrets.token_urlsafe(16))
         admin_user = Users(
-            nombre='joserojas',
+            nombre=admin_name,
             correo=admin_email,
             telefono='',
             direccion='',
@@ -28,8 +24,15 @@ with app.app_context():
         admin_user.password = admin_password
         db.session.add(admin_user)
         db.session.commit()
-        print("✅ Usuario admin 'joserojas' creado.")
-    elif admin_user.correo != admin_email:
+        print(f"✅ Usuario admin '{admin_name}' creado.")
+    else:
+        # Actualizar contraseña si es necesario
+        admin_password = os.environ.get('ADMIN_PASSWORD')
+        if admin_password and not admin_user.check_password(admin_password):
+            admin_user.password = admin_password
+            db.session.commit()
+            print(f"✅ Contraseña del admin actualizada.")
+    if admin_user.correo != admin_email:
         admin_user.correo = admin_email
         db.session.commit()
 

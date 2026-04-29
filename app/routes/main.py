@@ -5,6 +5,7 @@ from app.models.training import TrainingProgram
 from app.models.users import Users, GestorEquipo
 from app import db
 from datetime import datetime
+from sqlalchemy.orm import joinedload
 import re
 import unicodedata
 
@@ -405,12 +406,13 @@ def get_calendar_data():
     if professional_profile and current_user.rol_activo in ['super admin', 'administrador']:
         query = _filter_query_by_professional_profile(query, professional_profile)
     
-    assignments = query.all()
+    # Eager load training programs para evitar N+1 queries
+    assignments = query.options(joinedload(CalendarAssignment.training_program)).all()
     
     assignments_dict = {}
     for assign in assignments:
         key = f"{assign.day_number}-{assign.hour}"
-        program = TrainingProgram.query.get(assign.training_program_id)
+        program = assign.training_program
         program_name = program.program_name if program else "Unknown"
         ficha_number = program.ficha_number if program else ""
         assignments_dict[key] = {
@@ -495,7 +497,8 @@ def get_assignments_by_week():
     if filter_subject:
         query = query.filter_by(subject=filter_subject)
     
-    assignments = query.all()
+    # Eager load training programs para evitar N+1 queries
+    assignments = query.options(joinedload(CalendarAssignment.training_program)).all()
     
     logger.info(f"DEBUG: Total de asignaciones encontradas: {len(assignments)}")
     
@@ -503,7 +506,7 @@ def get_assignments_by_week():
     for assign in assignments:
         if week_start <= assign.day_number <= week_end:
             key = f"{assign.day_number}-{assign.hour}"
-            program = TrainingProgram.query.get(assign.training_program_id)
+            program = assign.training_program
             program_name = program.program_name if program else "Unknown"
             ficha_number = program.ficha_number if program else ""
             assignments_by_week[key] = {
@@ -570,7 +573,8 @@ def get_current_assignments():
     if professional_profile and current_user.rol_activo in ['super admin', 'administrador']:
         query = _filter_query_by_professional_profile(query, professional_profile)
     
-    assignments = query.all()
+    # Eager load training programs para evitar N+1 queries
+    assignments = query.options(joinedload(CalendarAssignment.training_program)).all()
     
     # Agrupar por instructor
     instructors_dict = {}
@@ -579,7 +583,7 @@ def get_current_assignments():
         if instructor not in instructors_dict:
             instructors_dict[instructor] = []
         
-        program = TrainingProgram.query.get(assign.training_program_id)
+        program = assign.training_program
         program_name = program.program_name if program else "Unknown"
         ficha_number = program.ficha_number if program else ""
         classroom = (program.classroom or "") if program else ""

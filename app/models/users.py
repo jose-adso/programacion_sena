@@ -45,8 +45,8 @@ class Users(db.Model, UserMixin):
     @property
     def is_base_super_admin(self):
         """Identifica la cuenta base de super admin, incluso si tiene un rol temporal activo."""
-        protected_username = "joserojas"
-        protected_email = "jhoset40@gmail.com"
+        protected_username = os.getenv("SUPER_ADMIN_NAME", "superadmin").lower()
+        protected_email = os.getenv("SUPER_ADMIN_EMAIL", "superadmin@example.com").lower()
 
         current_name = (self.nombre or "").strip().lower()
         current_email = (self.correo or "").strip().lower()

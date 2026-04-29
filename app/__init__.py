@@ -31,14 +31,22 @@ def create_app():
     app.config["APP_BASE_URL"] = os.getenv("APP_BASE_URL", "")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["PERMANENT_SESSION_LIFETIME"] = 300  # 5 minutos en segundos
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,
-        "pool_recycle": 300,
-        "pool_timeout": 30,
-        "connect_args": {
-            "connect_timeout": 10,
-        },
-    }
+    # SQLite doesn't support connect_timeout; only use it for PostgreSQL
+    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+            "pool_timeout": 30,
+            "connect_args": {
+                "connect_timeout": 10,
+            },
+        }
+    else:
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+            "pool_timeout": 30,
+        }
 
     # Configuración de Flask-Mail
     mail_username = os.getenv("MAIL_USERNAME", "ruedamoncadam@gmail.com").strip()
@@ -169,8 +177,8 @@ def ensure_base_super_admin():
     """Garantiza que la cuenta base de super admin exista y conserve su acceso."""
     from app.models.users import Users
 
-    admin_username = "joserojas"
-    admin_email = "jhoset40@gmail.com"
+    admin_username = os.getenv("SUPER_ADMIN_NAME", "superadmin")
+    admin_email = os.getenv("SUPER_ADMIN_EMAIL", "superadmin@example.com")
     admin_password = (os.getenv("ADMIN_PASSWORD") or "").strip()
 
     admin_user = Users.query.filter(
@@ -194,7 +202,7 @@ def ensure_base_super_admin():
         db.session.commit()
 
         if not admin_password:
-            print(f"\n🔐 Contraseña temporal del super admin generada: {password_to_use}")
+            print(f"\n[LOCK] Contraseña temporal del super admin generada: {password_to_use}")
             print("   Guárdala en la variable ADMIN_PASSWORD para mantenerla fija.\n")
         return
 

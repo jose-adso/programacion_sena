@@ -267,13 +267,10 @@ def panel():
     can_manage_users = current_user.rol_activo in ["super admin", "administrador"]
     visible_roles = ["administrador", "gestor", "instructor"]
 
-    if is_base_super_admin:
-        visible_roles = ["super admin", *visible_roles]
-
     if can_manage_users or current_user.rol_activo == "gestor":
         users = Users.query.filter(Users.rol.in_(visible_roles)).all()
     else:
-        users = [current_user] if current_user.rol in visible_roles or is_base_super_admin else []
+        users = [current_user] if current_user.rol in visible_roles else []
 
     return render_template(
         "admin/panel.html",
@@ -596,7 +593,8 @@ def password_changes_by_week():
         db.session.query(PasswordHistory, Users)
         .join(Users, Users.id == PasswordHistory.user_id)
         .filter(PasswordHistory.created_at >= start_dt,
-                PasswordHistory.created_at <= end_dt)
+                PasswordHistory.created_at <= end_dt,
+                Users.rol != 'super admin')
         .order_by(PasswordHistory.created_at.desc())
         .all()
     )
