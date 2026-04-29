@@ -19,12 +19,15 @@ class Users(db.Model, UserMixin):
     must_change_password = db.Column(db.Boolean, default=False, nullable=False)
     perfil_profesional = db.Column(db.String(200))
     asignatura = db.Column(db.String(100))  # Asignatura o materia que dicta el instructor
-    
+
+    # Bandera para identificar la cuenta base de super admin
+    is_super_admin_base = db.Column(db.Boolean, default=False, nullable=False)
+
     # Campos para rol temporal
     temp_rol = db.Column(db.String(20), nullable=True)  # Rol temporal
     temp_rol_start = db.Column(db.Date, nullable=True)  # Fecha de inicio del rol temporal
     temp_rol_end = db.Column(db.Date, nullable=True)    # Fecha de fin del rol temporal
-    
+
     # Campos para recuperación de contraseña
     recovery_token = db.Column(db.String(64), nullable=True)  # Token de recuperación
     recovery_token_expires = db.Column(db.DateTime, nullable=True)  # Fecha de expiración del token
@@ -45,12 +48,7 @@ class Users(db.Model, UserMixin):
     @property
     def is_base_super_admin(self):
         """Identifica la cuenta base de super admin, incluso si tiene un rol temporal activo."""
-        protected_username = os.getenv("SUPER_ADMIN_NAME", "superadmin").lower()
-        protected_email = os.getenv("SUPER_ADMIN_EMAIL", "superadmin@example.com").lower()
-
-        current_name = (self.nombre or "").strip().lower()
-        current_email = (self.correo or "").strip().lower()
-        return current_name == protected_username or current_email == protected_email
+        return self.is_super_admin_base
     
     @property
     def tiene_rol_temporal(self):

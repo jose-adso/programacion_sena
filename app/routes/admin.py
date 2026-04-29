@@ -264,7 +264,7 @@ def panel():
         flash("No tienes permiso para acceder al panel de administrador", "danger")
         return redirect(url_for("main.home"))
 
-    can_manage_users = current_user.rol_activo in ["super admin", "administrador"]
+    can_manage_users = current_user.is_base_super_admin or current_user.rol_activo in ["super admin", "administrador"]
     visible_roles = ["administrador", "gestor", "instructor"]
 
     if can_manage_users or current_user.rol_activo == "gestor":
@@ -324,14 +324,15 @@ def enviar_links_instructores():
 def cambiar_rol(user_id):
     """Cambiar el rol de un usuario temporalmente"""
     is_base_super_admin = current_user.is_base_super_admin
-    is_active_admin = current_user.rol_activo in ["super admin", "administrador"]
+    is_permanent_super_admin = current_user.rol == "super admin"  # Rol permanente, no temporal
+    is_active_admin = current_user.rol_activo in ["super admin", "administrador"] or current_user.is_base_super_admin
 
-    # Super admin base puede cambiar su propio rol aunque su rol activo sea otro.
-    if not is_active_admin and not is_base_super_admin:
+    # Super admin (base o permanente) puede cambiar su propio rol aunque su rol activo sea otro.
+    if not is_active_admin and not is_base_super_admin and not is_permanent_super_admin:
         return jsonify({"success": False, "error": "No tienes permiso"}), 403
 
-    # Si super admin base está actuando como rol no administrativo, solo puede cambiarse a sí mismo.
-    if is_base_super_admin and not is_active_admin and user_id != current_user.id:
+    # Si super admin está actuando como rol no administrativo, solo puede cambiarse a sí mismo.
+    if (is_base_super_admin or is_permanent_super_admin) and not is_active_admin and user_id != current_user.id:
         return jsonify({"success": False, "error": "Con tu rol activo actual solo puedes cambiar tu propio rol"}), 403
     
     data = request.get_json()
@@ -345,19 +346,22 @@ def cambiar_rol(user_id):
     if user.is_base_super_admin and user.id != current_user.id:
         return jsonify({"success": False, "error": "La cuenta base de super admin está protegida"}), 403
     
+    # Si el usuario es el super admin permanente (pero no cambiando a otro), también está permitido
+    # para cambiarse a sí mismo temporalmente
+    
     # Validar rol
     roles_validos = ["super admin", "administrador", "gestor", "instructor"]
     if nuevo_rol not in roles_validos:
         return jsonify({"success": False, "error": "Rol no válido"}), 400
     
     # Si es permanente o si el usuario actual no es super admin, no permitir crear super admin
-    if nuevo_rol == "super admin" and not is_base_super_admin:
+    if nuevo_rol == "super admin" and not is_base_super_admin and not is_permanent_super_admin:
         return jsonify({"success": False, "error": "No tienes permiso para asignar rol de super admin"}), 403
     
     hoy = datetime.now().date()
 
-    if user.is_base_super_admin and duracion == 'permanente' and nuevo_rol != 'super admin':
-        return jsonify({"success": False, "error": "La cuenta base de super admin no puede perder su rol permanente"}), 403
+    if (user.is_base_super_admin or (user.rol == "super admin")) and duracion == 'permanente' and nuevo_rol != 'super admin':
+        return jsonify({"success": False, "error": "La cuenta de super admin no puede perder su rol permanente"}), 403
     
     if duracion == 'permanente':
         # Establecer rol permanente

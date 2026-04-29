@@ -77,7 +77,7 @@
                                     {% endif %}
                                 </select>
                             </div>
-                            {% if current_user.rol_activo in ['super admin', 'administrador'] %}
+                            {% if current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador'] %}
                             <div class="input-group input-group-sm" style="width: 320px;">
                                 <span class="input-group-text" style="font-size: 0.75rem;">Perfil:</span>
                                 <input type="text" id="search-profile" class="form-control form-control-sm" placeholder="Filtrar perfil profesional..." onkeyup="filterInstructors(); applyFilters();">
@@ -1036,19 +1036,22 @@ function generateCalendar() {
                 
                 // Mostrar jornadas
                 if (mananaAssign) {
-                    html += `<div class="badge bg-primary w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 7, '${mananaAssign.instructor}', '${mananaAssign.subject}', ${mananaAssign.program_id || 0})">M: ${mananaAssign.subject}</div>`;
+                    const prefix = isInstructorView ? '' : 'M: ';
+                    html += `<div class="badge bg-primary w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 7, '${mananaAssign.instructor}', '${mananaAssign.subject}', ${mananaAssign.program_id || 0})">${prefix}${mananaAssign.subject}</div>`;
                 } else if (!isInstructorView) {
                     html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${dayNum}, '${dayName}', 7)">M: Sin asignar</div>`;
                 }
-                
+
                 if (mixtaAssign) {
-                    html += `<div class="badge bg-warning w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 12, '${mixtaAssign.instructor}', '${mixtaAssign.subject}', ${mixtaAssign.program_id || 0})">X: ${mixtaAssign.subject}</div>`;
+                    const prefix = isInstructorView ? '' : 'X: ';
+                    html += `<div class="badge bg-warning w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 12, '${mixtaAssign.instructor}', '${mixtaAssign.subject}', ${mixtaAssign.program_id || 0})">${prefix}${mixtaAssign.subject}</div>`;
                 } else if (!isInstructorView) {
                     html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${dayNum}, '${dayName}', 12)">X: Sin asignar</div>`;
                 }
-                
+
                 if (nocturnaAssign) {
-                    html += `<div class="badge bg-dark w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 18, '${nocturnaAssign.instructor}', '${nocturnaAssign.subject}', ${nocturnaAssign.program_id || 0})">N: ${nocturnaAssign.subject}</div>`;
+                    const prefix = isInstructorView ? '' : 'N: ';
+                    html += `<div class="badge bg-dark w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${dayNum}, '${dayName}', 18, '${nocturnaAssign.instructor}', '${nocturnaAssign.subject}', ${nocturnaAssign.program_id || 0})">${prefix}${nocturnaAssign.subject}</div>`;
                 } else if (!isInstructorView) {
                     html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${dayNum}, '${dayName}', 18)">N: Sin asignar</div>`;
                 }
@@ -1087,19 +1090,22 @@ function generateCalendar() {
                     
                     // Mostrar jornadas
                     if (mananaAssign) {
-                        html += `<div class="badge bg-primary w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 7, '${mananaAssign.instructor}', '${mananaAssign.subject}', ${mananaAssign.program_id || 0})">M: ${mananaAssign.subject}</div>`;
+                        const prefix = isInstructorView ? '' : 'M: ';
+                        html += `<div class="badge bg-primary w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 7, '${mananaAssign.instructor}', '${mananaAssign.subject}', ${mananaAssign.program_id || 0})">${prefix}${mananaAssign.subject}</div>`;
                     } else if (!isInstructorView) {
                         html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${day}, '${dayName}', 7)">M</div>`;
                     }
-                    
+
                     if (mixtaAssign) {
-                        html += `<div class="badge bg-warning w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 12, '${mixtaAssign.instructor}', '${mixtaAssign.subject}', ${mixtaAssign.program_id || 0})">X: ${mixtaAssign.subject}</div>`;
+                        const prefix = isInstructorView ? '' : 'X: ';
+                        html += `<div class="badge bg-warning w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 12, '${mixtaAssign.instructor}', '${mixtaAssign.subject}', ${mixtaAssign.program_id || 0})">${prefix}${mixtaAssign.subject}</div>`;
                     } else if (!isInstructorView) {
                         html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${day}, '${dayName}', 12)">X</div>`;
                     }
-                    
+
                     if (nocturnaAssign) {
-                        html += `<div class="badge bg-dark w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 18, '${nocturnaAssign.instructor}', '${nocturnaAssign.subject}', ${nocturnaAssign.program_id || 0})">N: ${nocturnaAssign.subject}</div>`;
+                        const prefix = isInstructorView ? '' : 'N: ';
+                        html += `<div class="badge bg-dark w-100 mb-1 small" style="font-size: 0.65rem; cursor: pointer;" onclick="event.stopPropagation(); openAssignmentModal(${day}, '${dayName}', 18, '${nocturnaAssign.instructor}', '${nocturnaAssign.subject}', ${nocturnaAssign.program_id || 0})">${prefix}${nocturnaAssign.subject}</div>`;
                     } else if (!isInstructorView) {
                         html += `<div class="badge bg-light text-dark w-100 mb-1 small border" style="font-size: 0.65rem; cursor: pointer;" onclick="openAssignmentModal(${day}, '${dayName}', 18)">N</div>`;
                     }
@@ -1189,31 +1195,28 @@ function generateWeekDaysCheckboxes(selectedDay, selectedDayName) {
     // Calcular el inicio de la semana (domingo)
     const firstDay = new Date(currentYear, currentMonth, 1);
     const startDayOfWeek = firstDay.getDay(); // 0 = Domingo, 1 = Lunes, ...
-    
-    // Encontrar el primer domingo del mes
-    let firstSunday = 1;
-    if (startDayOfWeek === 0) {
-        firstSunday = 1;
-    } else {
-        firstSunday = 1 + (7 - startDayOfWeek);
-    }
-    
-    // Calcular qué semana contiene el día seleccionado
     const selectedDayNum = parseInt(selectedDay);
-    let weekNumber = Math.floor((selectedDayNum - firstSunday) / 7);
-    if (weekNumber < 0) weekNumber = 0;
-    
-    // Calcular los días de esa semana (domingo a sábado)
-    const weekStart = firstSunday + (weekNumber * 7);
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     const daysEs = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
     
-    // Generar checkboxes
+    // Calcular el domingo que inicia la semana que contiene al día seleccionado
+    // El primer domingo de la semana de una fecha se calcula como:
+    // dayOfWeek = 0 (domingo), 1 (lunes), ... 6 (sábado)
+    // daysBeforeSunday = dayOfWeek
+    // Entonces: sundayOfWeek = selectedDayNum - daysBeforeSunday
+    const selectedDateObj = new Date(currentYear, currentMonth, selectedDayNum);
+    const selectedDayOfWeek = selectedDateObj.getDay(); // 0 = domingo, 1 = lunes, etc.
+    
+    // El domingo del inicio de la semana que contiene selectedDay
+    const daysBeforeSundayInWeek = selectedDayOfWeek;
+    const sundayOfSelectedWeek = selectedDayNum - daysBeforeSundayInWeek;
+    
+    // Generar checkboxes para domingo a sábado de esa semana
     for (let i = 0; i < 7; i++) {
-        const dayNum = weekStart + i;
+        const dayNum = sundayOfSelectedWeek + i;
         const dayName = daysEs[i];
         
         // Verificar que el día sea válido para el mes
-        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
         if (dayNum > 0 && dayNum <= daysInMonth) {
             // Verificar si ya existe una asignación para este día con alguna de las jornadas seleccionadas
             let hasAssignment = false;

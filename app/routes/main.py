@@ -375,9 +375,9 @@ def get_calendar_data():
     program_id = request.args.get('program_id', type=int)  # Filtrar por ficha
     instructor_name = request.args.get('instructor_name')  # Filtrar por instructor
     professional_profile = (request.args.get('professional_profile') or '').strip()  # Filtrar por perfil profesional
-    
+
     # Gestor ve solo su equipo de trabajo (solo lectura).
-    is_admin = current_user.rol_activo in ['super admin', 'administrador', 'gestor']
+    is_admin = current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador', 'gestor']
     
     # Instructor solo puede ver sus propias asignaciones.
     if current_user.rol_activo == 'instructor':
@@ -441,16 +441,16 @@ def get_assignments_by_week():
     
     # DEBUG: Log de los parámetros recibidos
     logger.info(f"DEBUG get_assignments_by_week: usuario={current_user.nombre}, rol={current_user.rol_activo}, month={month}, year={year}, week={week}")
-    
+
     # Filtros opcionales
     program_id = request.args.get('program_id', type=int)
     instructor_name = request.args.get('instructor_name')
     professional_profile = (request.args.get('professional_profile') or '').strip()
-    
+
     logger.info(f"DEBUG get_assignments_by_week: program_id={program_id}, instructor_name={instructor_name}")
-    
+
     # Gestor ve solo su equipo de trabajo (solo lectura).
-    is_admin = current_user.rol_activo in ['super admin', 'administrador', 'gestor']
+    is_admin = current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador', 'gestor']
     
     # Instructor solo puede ver sus propias asignaciones.
     if current_user.rol_activo == 'instructor':
@@ -543,9 +543,9 @@ def get_current_assignments():
     program_id = request.args.get('program_id', type=int)
     instructor_name = request.args.get('instructor_name')
     professional_profile = (request.args.get('professional_profile') or '').strip()
-    
+
     # Gestor ve solo su equipo de trabajo (solo lectura).
-    is_admin = current_user.rol_activo in ['super admin', 'administrador', 'gestor']
+    is_admin = current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador', 'gestor']
     
     # Instructor solo puede ver sus propias asignaciones.
     if current_user.rol_activo == 'instructor':
@@ -608,10 +608,10 @@ def get_current_assignments():
 def save_assignment():
     """Guardar una asignación de instructor"""
     # Gestores solo pueden ver, no modificar
-    if current_user.rol_activo == "gestor":
+    if current_user.rol_activo == "gestor" and not current_user.is_base_super_admin:
         return jsonify({"success": False, "error": "Los gestores no pueden crear asignaciones"}), 403
-    
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ["super admin", "administrador"]):
         return jsonify({"success": False, "error": "No autorizado"}), 403
     
     data = request.get_json()
@@ -697,10 +697,10 @@ def save_assignment():
 def remove_calendar_assignment():
     """Eliminar una asignación del calendario"""
     # Gestores solo pueden ver, no modificar
-    if current_user.rol_activo == "gestor":
+    if current_user.rol_activo == "gestor" and not current_user.is_base_super_admin:
         return jsonify({"success": False, "error": "Los gestores no pueden eliminar asignaciones"}), 403
-    
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ["super admin", "administrador"]):
         return jsonify({"success": False, "error": "No autorizado"}), 403
     
     data = request.get_json()
@@ -734,10 +734,10 @@ def remove_calendar_assignment():
 @login_required
 def update_assignment_competency():
     """Actualizar competencia y resultado de aprendizaje de una asignación o de todo el bloque semanal."""
-    if current_user.rol_activo == "gestor":
+    if current_user.rol_activo == "gestor" and not current_user.is_base_super_admin:
         return jsonify({"success": False, "error": "Los gestores no pueden modificar competencias"}), 403
-    
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ["super admin", "administrador"]):
         return jsonify({"success": False, "error": "No autorizado"}), 403
     
     data = request.get_json() or {}
@@ -793,10 +793,10 @@ def update_assignment_competency():
 @login_required
 def save_weekly_competency():
     """Guardar competencia y resultado de aprendizaje para toda una semana (lunes a viernes)"""
-    if current_user.rol_activo == "gestor":
+    if current_user.rol_activo == "gestor" and not current_user.is_base_super_admin:
         return jsonify({"success": False, "error": "Los gestores no pueden guardar competencias"}), 403
-    
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ["super admin", "administrador"]):
         return jsonify({"success": False, "error": "No autorizado"}), 403
     
     data = request.get_json()

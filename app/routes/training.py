@@ -849,7 +849,7 @@ def list_competencies():
 @training_bp.route("/competencies/delete/<int:program_id>", methods=["POST"])
 @login_required
 def delete_competencies_group(program_id):
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ["super admin", "administrador"]):
         flash("No tienes permiso para eliminar competencias", "danger")
         return redirect(url_for("training.list_competencies"))
 
@@ -1125,7 +1125,7 @@ def edit_program(program_id):
 @login_required
 def delete_program(program_id):
     # Only super admin can delete training programs
-    if current_user.rol_activo not in ["super admin", "administrador"]:
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ["super admin", "administrador"]):
         flash("No tienes permiso para eliminar programas de formación", "danger")
         return redirect(url_for("main.home"))
     

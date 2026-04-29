@@ -19,19 +19,25 @@ with app.app_context():
             correo=admin_email,
             telefono='',
             direccion='',
-            rol='super admin'
+            rol='super admin',
+            is_super_admin_base=True
         )
         admin_user.password = admin_password
         db.session.add(admin_user)
         db.session.commit()
-        print(f"✅ Usuario admin '{admin_name}' creado.")
+        print(f"Usuario admin '{admin_name}' creado.")
     else:
+        # Asegurar que sea super admin base
+        if not admin_user.is_super_admin_base:
+            admin_user.is_super_admin_base = True
+            db.session.commit()
+            print(f"Usuario admin marcado como base super admin.")
         # Actualizar contraseña si es necesario
         admin_password = os.environ.get('ADMIN_PASSWORD')
         if admin_password and not admin_user.check_password(admin_password):
             admin_user.password = admin_password
             db.session.commit()
-            print(f"✅ Contraseña del admin actualizada.")
+            print(f"Contrasena del admin actualizada.")
     if admin_user.correo != admin_email:
         admin_user.correo = admin_email
         db.session.commit()

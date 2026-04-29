@@ -57,7 +57,7 @@
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
                 <li><a class="dropdown-item" href="{{ url_for('admin.panel') }}">Panel Principal</a></li>
-                {% if current_user.rol_activo in ['super admin', 'administrador'] %}
+                {% if current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador'] %}
                 <li><a class="dropdown-item" href="{{ url_for('admin.registrar') }}">Registrar Usuario</a></li>
                 {% else %}
                 <li><span class="dropdown-item disabled">Registrar Usuario (no disponible con rol activo)</span></li>
@@ -85,7 +85,7 @@
               </a>
               <ul class="dropdown-menu dropdown-menu-dark">
                 <li><a class="dropdown-item" href="{{ url_for('training.list_competencies') }}">Listar Competencias</a></li>
-                {% if current_user.rol_activo in ['super admin', 'administrador'] or current_user.rol == 'super admin' %}
+                {% if current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador'] or current_user.rol == 'super admin' %}
                 <li><a class="dropdown-item" href="{{ url_for('training.upload_competencies') }}">Cargar Competencias Excel</a></li>
                 {% elif current_user.rol_activo == 'gestor' %}
                 <li><span class="dropdown-item disabled">Cargar Competencias Excel (solo lectura)</span></li>

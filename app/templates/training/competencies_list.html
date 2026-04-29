@@ -43,7 +43,7 @@
                             </div>
                             <div class="d-flex align-items-center gap-2">
                                 <span class="badge bg-dark">{{ group.records|length }} registros</span>
-                                {% if current_user.rol_activo in ['super admin', 'administrador'] and group.training_program_id %}
+                                {% if (current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador']) and group.training_program_id %}
                                 <form method="POST" action="{{ url_for('training.delete_competencies_group', program_id=group.training_program_id) }}" onsubmit="event.stopPropagation(); return confirm('¿Eliminar todos los registros de competencias y resultados de la ficha {{ group.ficha_number }}?');" onclick="event.stopPropagation()" class="m-0 d-inline-block flex-shrink-0">
                                     <button type="submit" class="badge bg-danger border-0 py-1" style="padding-left: 0.35rem; padding-right: 0.35rem; font-size: 0.68rem; line-height: 1; width: auto; display: inline-block;">Eliminar</button>
                                 </form>
