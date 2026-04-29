@@ -30,7 +30,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", default_database_url)
     app.config["APP_BASE_URL"] = os.getenv("APP_BASE_URL", "")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["PERMANENT_SESSION_LIFETIME"] = 300  # 5 minutos en segundos
+    app.config["PERMANENT_SESSION_LIFETIME"] = 1800  # 30 minutos en segundos
     # SQLite doesn't support connect_timeout; only use it for PostgreSQL
     if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgresql"):
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {

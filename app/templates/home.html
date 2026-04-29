@@ -334,12 +334,27 @@
                 </div>
                 
                 <div class="mb-3">
-                    <label class="form-label">Jornada:</label>
-                    <select id="modal-jornada" class="form-select">
-                        <option value="7">Mañana (7am-12pm)</option>
-                        <option value="12">Mixta (12pm-6pm)</option>
-                        <option value="18">Nocturna (6pm-10pm)</option>
-                    </select>
+                    <label class="form-label">Jornadas (puedes seleccionar varias):</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="jornada-manana" value="7" checked>
+                            <label class="form-check-label" for="jornada-manana">
+                                Mañana (7am-12pm)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="jornada-mixta" value="12">
+                            <label class="form-check-label" for="jornada-mixta">
+                                Mixta (12pm-6pm)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="jornada-nocturna" value="18">
+                            <label class="form-check-label" for="jornada-nocturna">
+                                Nocturna (6pm-10pm)
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="mb-3">
@@ -1123,7 +1138,23 @@ function openAssignmentModal(day, dayName, jornada, instructor = '', materia = '
         instructor = currentUserName;
     }
     
-    document.getElementById('modal-jornada').value = jornada;
+    // Desmarcar todos los checkboxes de jornada
+    document.getElementById('jornada-manana').checked = false;
+    document.getElementById('jornada-mixta').checked = false;
+    document.getElementById('jornada-nocturna').checked = false;
+    
+    // Marcar la jornada seleccionada (si viene una)
+    if (jornada === 7) {
+        document.getElementById('jornada-manana').checked = true;
+    } else if (jornada === 12) {
+        document.getElementById('jornada-mixta').checked = true;
+    } else if (jornada === 18) {
+        document.getElementById('jornada-nocturna').checked = true;
+    } else {
+        // Si no viene jornada específica, marcar Mañana por defecto
+        document.getElementById('jornada-manana').checked = true;
+    }
+    
     document.getElementById('modal-instructor').value = instructor;
     document.getElementById('modal-materia').value = materia;
     document.getElementById('modal-ficha').value = programId;
@@ -1145,7 +1176,15 @@ function generateWeekDaysCheckboxes(selectedDay, selectedDayName) {
         ? currentUserName
         : document.getElementById('modal-instructor').value;
     const materia = document.getElementById('modal-materia').value;
-    const jornada = parseInt(document.getElementById('modal-jornada').value);
+    
+    // Obtener las jornadas seleccionadas (cualquiera de ellas, para verificar asignaciones)
+    const jornadasSeleccionadas = [];
+    if (document.getElementById('jornada-manana').checked) jornadasSeleccionadas.push(7);
+    if (document.getElementById('jornada-mixta').checked) jornadasSeleccionadas.push(12);
+    if (document.getElementById('jornada-nocturna').checked) jornadasSeleccionadas.push(18);
+    
+    // Si no hay jornadas seleccionadas, usar todas para verificación
+    const jornadasParaVerif = jornadasSeleccionadas.length > 0 ? jornadasSeleccionadas : [7, 12, 18];
     
     // Calcular el inicio de la semana (domingo)
     const firstDay = new Date(currentYear, currentMonth, 1);
@@ -1176,13 +1215,19 @@ function generateWeekDaysCheckboxes(selectedDay, selectedDayName) {
         // Verificar que el día sea válido para el mes
         const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
         if (dayNum > 0 && dayNum <= daysInMonth) {
-            // Verificar si ya existe una asignación para este día
-            const assignmentKey = `${dayNum}-${jornada}`;
-            const existingAssignment = currentAssignments[assignmentKey];
-            const hasAssignment = existingAssignment && 
-                existingAssignment.program_id == programId &&
-                existingAssignment.instructor === instructor &&
-                existingAssignment.subject === materia;
+            // Verificar si ya existe una asignación para este día con alguna de las jornadas seleccionadas
+            let hasAssignment = false;
+            for (const jornada of jornadasParaVerif) {
+                const assignmentKey = `${dayNum}-${jornada}`;
+                const existingAssignment = currentAssignments[assignmentKey];
+                if (existingAssignment && 
+                    existingAssignment.program_id == programId &&
+                    existingAssignment.instructor === instructor &&
+                    existingAssignment.subject === materia) {
+                    hasAssignment = true;
+                    break;
+                }
+            }
             
             const isChecked = dayNum === selectedDayNum || hasAssignment;
             const checkbox = document.createElement('div');
@@ -1204,10 +1249,20 @@ function saveAssignment() {
         ? currentUserName
         : document.getElementById('modal-instructor').value;
     const materia = document.getElementById('modal-materia').value;
-    const jornada = parseInt(document.getElementById('modal-jornada').value);
     
     if (!programId || !instructor || !materia) {
         alert('Por favor complete todos los campos');
+        return;
+    }
+    
+    // Obtener las jornadas seleccionadas
+    const jornadasSeleccionadas = [];
+    if (document.getElementById('jornada-manana').checked) jornadasSeleccionadas.push(7);
+    if (document.getElementById('jornada-mixta').checked) jornadasSeleccionadas.push(12);
+    if (document.getElementById('jornada-nocturna').checked) jornadasSeleccionadas.push(18);
+    
+    if (jornadasSeleccionadas.length === 0) {
+        alert('Por favor seleccione al menos una jornada');
         return;
     }
     
@@ -1226,24 +1281,29 @@ function saveAssignment() {
         return;
     }
     
-    // Enviar asignaciones para cada día seleccionado
-    const promises = selectedDays.map(day => {
-        return fetch('/save_assignment', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                program_id: parseInt(programId),
-                instructor: instructor,
-                subject: materia,
-                day: day.day_name,
-                day_number: day.day_number,
-                month: currentMonth,
-                year: currentYear,
-                hour: jornada
-            }),
-            cache: 'no-cache'
-        }).then(response => response.json());
-    });
+    // Crear promesas para cada combinación de día + jornada
+    const promises = [];
+    for (const day of selectedDays) {
+        for (const jornada of jornadasSeleccionadas) {
+            promises.push(
+                fetch('/save_assignment', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        program_id: parseInt(programId),
+                        instructor: instructor,
+                        subject: materia,
+                        day: day.day_name,
+                        day_number: day.day_number,
+                        month: currentMonth,
+                        year: currentYear,
+                        hour: jornada
+                    }),
+                    cache: 'no-cache'
+                }).then(response => response.json())
+            );
+        }
+    }
     
     Promise.all(promises)
         .then(results => {
@@ -1268,10 +1328,20 @@ function deleteAssignment() {
     if (!selectedDayInfo) return;
     
     const programId = document.getElementById('modal-ficha').value;
-    const jornada = parseInt(document.getElementById('modal-jornada').value);
     
     if (!programId) {
         alert('Por favor seleccione una ficha');
+        return;
+    }
+    
+    // Obtener las jornadas seleccionadas
+    const jornadasSeleccionadas = [];
+    if (document.getElementById('jornada-manana').checked) jornadasSeleccionadas.push(7);
+    if (document.getElementById('jornada-mixta').checked) jornadasSeleccionadas.push(12);
+    if (document.getElementById('jornada-nocturna').checked) jornadasSeleccionadas.push(18);
+    
+    if (jornadasSeleccionadas.length === 0) {
+        alert('Por favor seleccione al menos una jornada');
         return;
     }
     
@@ -1287,25 +1357,31 @@ function deleteAssignment() {
         return;
     }
     
-    if (!confirm(`¿Está seguro de eliminar las asignaciones de ${selectedDays.length} día(s)?`)) {
+    const totalAsignaciones = selectedDays.length * jornadasSeleccionadas.length;
+    if (!confirm(`¿Está seguro de eliminar ${totalAsignaciones} asignación(es)?`)) {
         return;
     }
     
-    // Eliminar asignaciones para cada día seleccionado
-    const promises = selectedDays.map(dayNumber => {
-        return fetch('/remove_calendar_assignment', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                program_id: parseInt(programId),
-                day_number: dayNumber,
-                month: currentMonth,
-                year: currentYear,
-                hour: jornada
-            }),
-            cache: 'no-cache'
-        }).then(response => response.json());
-    });
+    // Eliminar asignaciones para cada combinación de día + jornada
+    const promises = [];
+    for (const dayNumber of selectedDays) {
+        for (const jornada of jornadasSeleccionadas) {
+            promises.push(
+                fetch('/remove_calendar_assignment', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        program_id: parseInt(programId),
+                        day_number: dayNumber,
+                        month: currentMonth,
+                        year: currentYear,
+                        hour: jornada
+                    }),
+                    cache: 'no-cache'
+                }).then(response => response.json())
+            );
+        }
+    }
     
      Promise.all(promises)
          .then(results => {
