@@ -55,7 +55,8 @@
                 <td>
                     <span class="badge bg-primary">{{ user.rol }}</span>
                     {% if user.tiene_rol_temporal %}
-                    <span class="badge bg-warning text-dark" title="Vence el {{ user.temp_rol_end.strftime('%d/%m/%Y') }}">Temporal</span>
+                    <br>
+                    <small class="text-muted">Temporal: {{ user.temp_rol }} ({{ user.temp_rol_start.strftime('%d/%m') }} - {{ user.temp_rol_end.strftime('%d/%m') }})</small>
                     {% endif %}
                 </td>
                 <td>
@@ -70,13 +71,13 @@
                     {% if user.is_base_super_admin %}
                     <span class="badge bg-dark">Protegido</span>
                     {% if is_base_super_admin and user.id == current_user.id %}
-                    <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}')">
+                    <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}', {% if user.tiene_rol_temporal %}'{{ user.temp_rol }}', '{{ user.temp_rol_start.strftime('%d/%m/%Y') }}', '{{ user.temp_rol_end.strftime('%d/%m/%Y') }}'{% else %}null{% endif %})">
                         Cambiar Mi Rol
                     </button>
                     {% endif %}
                     {% elif can_manage_users %}
                     {% if user.id != current_user.id %}
-                    <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}')">
+                    <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}', {% if user.tiene_rol_temporal %}'{{ user.temp_rol }}', '{{ user.temp_rol_start.strftime('%d/%m/%Y') }}', '{{ user.temp_rol_end.strftime('%d/%m/%Y') }}'{% else %}null{% endif %})">
                         Cambiar Rol
                     </button>
                     <form action="{{ url_for('admin.eliminar', user_id=user.id) }}" method="POST" onsubmit="return confirm('¿Está seguro de eliminar este usuario?');" style="display:inline;">
@@ -86,7 +87,7 @@
                     <span class="text-muted small">Sesión actual</span>
                     {% endif %}
                     {% elif is_base_super_admin and user.id == current_user.id %}
-                    <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}')">
+                    <button class="btn btn-success btn-sm" onclick="openCambiarRolModal({{ user.id }}, '{{ user.nombre }}', '{{ user.rol }}', {% if user.tiene_rol_temporal %}'{{ user.temp_rol }}', '{{ user.temp_rol_start.strftime('%d/%m/%Y') }}', '{{ user.temp_rol_end.strftime('%d/%m/%Y') }}'{% else %}null{% endif %})">
                         Cambiar Mi Rol
                     </button>
                     {% else %}
@@ -114,10 +115,15 @@
             <div class="modal-body">
                 <p>Usuario: <strong id="modal-usuario-nombre"></strong></p>
                 <p>Rol actual: <strong id="modal-usuario-rol"></strong></p>
+                <p id="modal-rol-temporal-info" style="display: none;">
+                    Rol temporal: <strong id="modal-usuario-rol-temporal"></strong><br>
+                    Duración: <strong id="modal-usuario-rol-duracion"></strong>
+                </p>
                 
                 <div class="mb-3">
                     <label class="form-label">Nuevo Rol:</label>
                     <select id="nuevo-rol" class="form-select">
+                        <option value="" selected disabled>Seleccione rol</option>
                         <option value="gestor">Gestor</option>
                         <option value="instructor">Instructor</option>
                         {% if is_base_super_admin %}
@@ -128,10 +134,11 @@
                         {% endif %}
                     </select>
                 </div>
-                
+
                 <div class="mb-3">
                     <label class="form-label">Duración:</label>
                     <select id="rol-duracion" class="form-select" onchange="toggleFechaFin()">
+                        <option value="" selected disabled>Seleccione duración</option>
                         <option value="semana">1 Semana</option>
                         <option value="mes">1 Mes</option>
                         <option value="permanente">Permanente</option>
@@ -171,10 +178,20 @@ function filterUsersTable() {
     });
 }
 
-function openCambiarRolModal(userId, nombre, rol) {
+function openCambiarRolModal(userId, nombre, rol, tempRol, tempRolStart, tempRolEnd) {
     usuarioIdActual = userId;
     document.getElementById('modal-usuario-nombre').textContent = nombre;
     document.getElementById('modal-usuario-rol').textContent = rol;
+    
+    // Mostrar información del rol temporal si existe
+    const tempInfo = document.getElementById('modal-rol-temporal-info');
+    if (tempRol && tempRolStart && tempRolEnd) {
+        document.getElementById('modal-usuario-rol-temporal').textContent = tempRol;
+        document.getElementById('modal-usuario-rol-duracion').textContent = `${tempRolStart} - ${tempRolEnd}`;
+        tempInfo.style.display = 'block';
+    } else {
+        tempInfo.style.display = 'none';
+    }
     
     // Establecer fecha de hoy por defecto
     const hoy = new Date().toISOString().split('T')[0];
@@ -198,18 +215,37 @@ function toggleFechaFin() {
 
 function cambiarRol() {
     if (!usuarioIdActual) return;
-    
+
     const nuevoRol = document.getElementById('nuevo-rol').value;
     const duracion = document.getElementById('rol-duracion').value;
-    
+
+    // Validar que se seleccionen ambos campos
+    if (!nuevoRol) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Campo requerido',
+            text: 'Por favor seleccione un rol'
+        });
+        return;
+    }
+
+    if (!duracion) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Campo requerido',
+            text: 'Por favor seleccione una duración'
+        });
+        return;
+    }
+
     const data = {
         rol: nuevoRol,
         duracion: duracion
     };
-    
+
     console.log('Enviando datos:', data);
     console.log('URL:', `/cambiar_rol/${usuarioIdActual}`);
-    
+
     fetch(`/cambiar_rol/${usuarioIdActual}`, {
         method: 'POST',
         headers: {
@@ -225,16 +261,87 @@ function cambiarRol() {
     .then(data => {
         console.log('Respuesta:', data);
         if (data.success) {
-            alert(data.message);
-            location.reload();
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: data.message,
+                timer: 1500,
+                showConfirmButton: false
+            }).then(() => {
+                // Cerrar el modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('cambiarRolModal'));
+                modal.hide();
+                // Actualizar la fila del usuario dinámicamente
+                if (data.user) {
+                    updateUserRow(data.user);
+                }
+            });
         } else {
-            alert('Error: ' + data.error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.error
+            });
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error al cambiar el rol: ' + error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error al cambiar el rol: ' + error
+        });
     });
+}
+
+function updateUserRow(userData) {
+    // Encontrar la fila del usuario por ID
+    const rows = document.querySelectorAll('#users-table tbody tr.user-row');
+    for (const row of rows) {
+        const userIdCell = row.querySelector('td:first-child');
+        if (userIdCell && parseInt(userIdCell.textContent) === userData.id) {
+            // Obtener el nombre del usuario de la fila
+            const nombreCell = row.querySelector('td:nth-child(2)');
+            const nombre = nombreCell ? nombreCell.textContent.trim() : '';
+
+            // Actualizar celda de rol actual
+            const rolCell = row.querySelector('td:nth-child(5)');
+            if (rolCell) {
+                let html = `<span class="badge bg-primary">${userData.rol}</span>`;
+                if (userData.tiene_rol_temporal) {
+                    html += `<br><small class="text-muted">Temporal: ${userData.temp_rol} (${userData.temp_rol_start.split('/').slice(0, 2).join('/')} - ${userData.temp_rol_end.split('/').slice(0, 2).join('/')})</small>`;
+                }
+                rolCell.innerHTML = html;
+            }
+
+            // Actualizar celda de rol temporal
+            const tempRolCell = row.querySelector('td:nth-child(6)');
+            if (tempRolCell) {
+                if (userData.tiene_rol_temporal) {
+                    tempRolCell.innerHTML = `
+                        <span class="badge bg-info">${userData.temp_rol}</span>
+                        <small class="text-muted">(${userData.temp_rol_start.split('/').slice(0, 2).join('/')} - ${userData.temp_rol_end.split('/').slice(0, 2).join('/')})</small>
+                    `;
+                } else {
+                    tempRolCell.innerHTML = '<span class="text-muted">Sin rol temporal</span>';
+                }
+            }
+
+            // Actualizar el botón para pasar los nuevos datos del rol temporal
+            const actionCell = row.querySelector('td:nth-child(7)');
+            if (actionCell) {
+                const button = actionCell.querySelector('button');
+                if (button) {
+                    const tempParams = userData.tiene_rol_temporal
+                        ? `'${userData.temp_rol}', '${userData.temp_rol_start}', '${userData.temp_rol_end}'`
+                        : 'null';
+                    button.setAttribute('onclick', `openCambiarRolModal(${userData.id}, '${nombre}', '${userData.rol}', ${tempParams})`);
+                }
+            }
+
+            break;
+        }
+    }
 }
 </script>
 {% endblock %}

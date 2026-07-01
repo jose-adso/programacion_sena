@@ -6,3 +6,4 @@ Werkzeug
 psycopg2-binary
 openpyxl
 xlrd
+reportlab
