@@ -113,7 +113,35 @@
                                 <option value="10">Noviembre</option>
                                 <option value="11">Diciembre</option>
                             </select>
-                            <input type="number" id="year-select" class="form-control form-control-sm d-inline-block" style="width: 80px;" value="2026" min="2020" max="2030" onchange="changeYear(this)">
+                            <input type="number" id="year-select" class="form-control form-control-sm d-inline-block" style="width: 80px;" value="2026" min="2020" max="2026" onchange="changeYear(this)">
+
+                            {% if current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador'] %}
+                            <div class="dropdown d-inline-block ms-1">
+                                <button class="btn btn-sm btn-dark dropdown-toggle" type="button" id="exportDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="Exportar Programación" style="opacity: 0.9;">
+                                    <i class="bi bi-file-earmark-arrow-down"></i> Exportar
+                                </button>
+                                <ul class="dropdown-menu shadow-sm" aria-labelledby="exportDropdown" style="font-size: 0.85rem;">
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center py-2" href="#" onclick="triggerExportInline('pdf', event)">
+                                            <i class="bi bi-file-pdf text-danger me-2" style="font-size: 1.1rem;"></i> PDF
+                                            <span id="spinner-inline-pdf" class="spinner-border spinner-border-sm ms-auto d-none" role="status" aria-hidden="true"></span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center py-2" href="#" onclick="triggerExportInline('excel', event)">
+                                            <i class="bi bi-file-excel text-success me-2" style="font-size: 1.1rem;"></i> Excel (.xlsx)
+                                            <span id="spinner-inline-excel" class="spinner-border spinner-border-sm ms-auto d-none" role="status" aria-hidden="true"></span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center py-2" href="#" onclick="triggerExportInline('csv', event)">
+                                            <i class="bi bi-filetype-csv text-secondary me-2" style="font-size: 1.1rem;"></i> CSV
+                                            <span id="spinner-inline-csv" class="spinner-border spinner-border-sm ms-auto d-none" role="status" aria-hidden="true"></span>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -538,11 +566,9 @@ let currentUserName = {{ username | tojson }};
 let currentUserAsignatura = {{ current_user_asignatura | tojson }};
 let isGestor = currentUserRol === 'gestor';
 
-// Cargar mes/año desde localStorage o usar fecha actual
-let savedMonth = localStorage.getItem('calendar_month');
-let savedYear = localStorage.getItem('calendar_year');
-let currentMonth = savedMonth !== null ? parseInt(savedMonth) : new Date().getMonth();
-let currentYear = savedYear !== null ? parseInt(savedYear) : new Date().getFullYear();
+// Usar fecha actual por defecto al ingresar (mes 0-indexed, año tope 2026)
+let currentMonth = new Date().getMonth();
+let currentYear = Math.max(2020, Math.min(2026, new Date().getFullYear()));
 let currentAssignments = {};
 let selectedDayInfo = null;
 let currentViewMode = localStorage.getItem('calendar_view_mode') || 'month';
@@ -627,15 +653,28 @@ function saveMyProfessionalProfile() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Perfil profesional actualizado');
-            window.location.reload();
+            Swal.fire({
+                icon: 'success',
+                title: 'Perfil actualizado',
+                text: 'Tu perfil profesional ha sido actualizado correctamente',
+                timer: 1500,
+                showConfirmButton: false
+            }).then(() => window.location.reload());
         } else {
-            alert('Error: ' + (data.error || 'No se pudo actualizar el perfil'));
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.error || 'No se pudo actualizar el perfil'
+            });
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error de conexión al actualizar perfil');
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Error de conexión al actualizar perfil'
+        });
     });
 }
 
@@ -1254,7 +1293,11 @@ function saveAssignment() {
     const materia = document.getElementById('modal-materia').value;
     
     if (!programId || !instructor || !materia) {
-        alert('Por favor complete todos los campos');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Campos incompletos',
+            text: 'Por favor complete todos los campos'
+        });
         return;
     }
     
@@ -1265,7 +1308,11 @@ function saveAssignment() {
     if (document.getElementById('jornada-nocturna').checked) jornadasSeleccionadas.push(18);
     
     if (jornadasSeleccionadas.length === 0) {
-        alert('Por favor seleccione al menos una jornada');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Jornada requerida',
+            text: 'Por favor seleccione al menos una jornada'
+        });
         return;
     }
     
@@ -1280,7 +1327,11 @@ function saveAssignment() {
     });
     
     if (selectedDays.length === 0) {
-        alert('Por favor seleccione al menos un día');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Día requerido',
+            text: 'Por favor seleccione al menos un día'
+        });
         return;
     }
     
@@ -1318,12 +1369,20 @@ function saveAssignment() {
                 loadHorasAsignadas();
             } else {
                 const errors = results.filter(r => !r.success).map(r => r.error || 'Desconocido');
-                alert('Error al guardar: ' + errors.join(', '));
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error al guardar',
+                    text: errors.join(', ')
+                });
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error de conexión');
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de conexión',
+                text: 'No se pudo conectar con el servidor'
+            });
         });
 }
 
@@ -1333,7 +1392,11 @@ function deleteAssignment() {
     const programId = document.getElementById('modal-ficha').value;
     
     if (!programId) {
-        alert('Por favor seleccione una ficha');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Ficha requerida',
+            text: 'Por favor seleccione una ficha'
+        });
         return;
     }
     
@@ -1344,7 +1407,11 @@ function deleteAssignment() {
     if (document.getElementById('jornada-nocturna').checked) jornadasSeleccionadas.push(18);
     
     if (jornadasSeleccionadas.length === 0) {
-        alert('Por favor seleccione al menos una jornada');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Jornada requerida',
+            text: 'Por favor seleccione al menos una jornada'
+        });
         return;
     }
     
@@ -1356,7 +1423,11 @@ function deleteAssignment() {
     });
     
     if (selectedDays.length === 0) {
-        alert('Por favor seleccione al menos un día');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Día requerido',
+            text: 'Por favor seleccione al menos un día'
+        });
         return;
     }
     
@@ -1395,12 +1466,20 @@ function deleteAssignment() {
              loadAssignmentsPanel();
              loadHorasAsignadas();
          } else {
-             alert('Error al eliminar: ' + (data.error || 'Desconocido'));
+             Swal.fire({
+                 icon: 'error',
+                 title: 'Error al eliminar',
+                 text: data.error || 'Desconocido'
+             });
          }
      })
      .catch(error => {
          console.error('Error:', error);
-         alert('Error de conexión');
+         Swal.fire({
+             icon: 'error',
+             title: 'Error de conexión',
+             text: 'No se pudo conectar con el servidor'
+         });
      });
  }
 
@@ -1887,7 +1966,11 @@ function openCompetencyModalFromPayload(encodedPayload) {
         );
     } catch (error) {
         console.error('No se pudo abrir el modal de edición:', error);
-        alert('No se pudieron cargar los datos de la competencia para editar.');
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'No se pudieron cargar los datos de la competencia para editar.'
+        });
     }
 }
 
@@ -1931,12 +2014,20 @@ function saveCompetency() {
     const weekIndex = parseInt(document.getElementById('competency-week-select').value, 10) || 0;
     
     if (!assignmentId) {
-        alert('Error: No se encontró la asignación');
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'No se encontró la asignación'
+        });
         return;
     }
     
     if (!competencia) {
-        alert('Por favor ingrese la competencia');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Competencia requerida',
+            text: 'Por favor ingrese la competencia'
+        });
         return;
     }
 
@@ -1970,17 +2061,31 @@ function saveCompetency() {
             if (data.success) {
                 bootstrap.Modal.getInstance(document.getElementById('competencyModal')).hide();
                 if ((data.updated_count || 0) > 1) {
-                    alert(`Competencia actualizada en ${data.updated_count} asignaciones de la semana.`);
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Competencia actualizada',
+                        text: `Competencia actualizada en ${data.updated_count} asignaciones de la semana.`,
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
                 }
                 loadCompetenciesByWeek();
                 loadCalendar();
             } else {
-                alert('Error al guardar: ' + (data.error || 'Desconocido'));
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error al guardar',
+                    text: data.error || 'Desconocido'
+                });
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error de conexión');
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de conexión',
+                text: 'No se pudo conectar con el servidor'
+            });
         });
 }
 
@@ -2046,7 +2151,11 @@ function syncWeeklyExistingCompetencies() {
 
 function openWeeklyCompetencyModal() {
     if (isGestor) {
-        alert('Los gestores tienen permiso de solo lectura. No puedes asignar competencias a semanas.');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Permiso denegado',
+            text: 'Los gestores tienen permiso de solo lectura. No puedes asignar competencias a semanas.'
+        });
         return;
     }
     
@@ -2181,7 +2290,11 @@ function updateWeeklySubjectOptions(preferredSubject = '') {
 
 function saveWeeklyCompetency() {
     if (isGestor) {
-        alert('Los gestores no pueden guardar competencias.');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Permiso denegado',
+            text: 'Los gestores no pueden guardar competencias.'
+        });
         return;
     }
     
@@ -2195,12 +2308,20 @@ function saveWeeklyCompetency() {
     const year = currentYear;
     
     if (!programId || !instructor || !subject || !competencia) {
-        alert('Por favor complete todos los campos obligatorios (Semana, Docente, Materia, Programa y Competencia)');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Campos incompletos',
+            text: 'Por favor complete todos los campos obligatorios (Semana, Docente, Materia, Programa y Competencia)'
+        });
         return;
     }
     
     if (weekIndex === '') {
-        alert('Por favor seleccione una semana');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Semana requerida',
+            text: 'Por favor seleccione una semana'
+        });
         return;
     }
     
@@ -2227,17 +2348,32 @@ function saveWeeklyCompetency() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(`Competencia guardada exitosamente para ${data.updated_count} asignaciones`);
-            bootstrap.Modal.getInstance(document.getElementById('weeklyCompetencyModal')).hide();
-            loadCompetenciesByWeek();
-            loadCalendar();
+            Swal.fire({
+                icon: 'success',
+                title: 'Competencia guardada',
+                text: `Competencia guardada exitosamente para ${data.updated_count} asignaciones`,
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                bootstrap.Modal.getInstance(document.getElementById('weeklyCompetencyModal')).hide();
+                loadCompetenciesByWeek();
+                loadCalendar();
+            });
         } else {
-            alert('Error al guardar: ' + (data.error || 'Desconocido'));
+            Swal.fire({
+                icon: 'error',
+                title: 'Error al guardar',
+                text: data.error || 'Desconocido'
+            });
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error de conexión');
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de conexión',
+            text: 'No se pudo conectar con el servidor'
+        });
     });
 }
 
@@ -2336,10 +2472,84 @@ function saveEquipo() {
             // Recargar la página para actualizar el filtro con el nuevo equipo
             location.reload();
         } else {
-            alert('Error al guardar el equipo: ' + (data.error || 'desconocido'));
+            Swal.fire({
+                icon: 'error',
+                title: 'Error al guardar el equipo',
+                text: data.error || 'desconocido'
+            });
         }
     })
-    .catch(() => alert('Error de conexión'));
+    .catch(() => Swal.fire({
+        icon: 'error',
+        title: 'Error de conexión',
+        text: 'No se pudo conectar con el servidor'
+    }));
+}
+{% endif %}
+{% if current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador'] %}
+function triggerExportInline(format, event) {
+    if(event) event.preventDefault();
+    
+    // Capturar el mes y el año activos en los inputs
+    const month = document.getElementById('month-select') ? document.getElementById('month-select').value : new Date().getMonth();
+    const year = document.getElementById('year-select') ? document.getElementById('year-select').value : new Date().getFullYear();
+    const spinner = document.getElementById('spinner-inline-' + format);
+    
+    // Obtener filtros de la vista
+    const filterFicha = document.getElementById('filter-ficha');
+    const filterInstructor = document.getElementById('filter-instructor');
+    const filterProfile = document.getElementById('search-profile');
+    
+    let url = `/export_programacion?format=${format}&month=${month}&year=${year}`;
+    if (filterFicha && filterFicha.value) {
+        url += `&program_id=${filterFicha.value}`;
+    }
+    if (filterInstructor && filterInstructor.value && filterInstructor.value !== '__available__') {
+        url += `&instructor_name=${encodeURIComponent(filterInstructor.value)}`;
+    }
+    if (filterProfile && filterProfile.value) {
+        url += `&professional_profile=${encodeURIComponent(filterProfile.value.trim())}`;
+    }
+
+    // Mostrar spinner
+    if(spinner) spinner.classList.remove('d-none');
+    
+    fetch(url)
+    .then(response => {
+        if(spinner) spinner.classList.add('d-none');
+        if (response.ok) {
+            // Obtener nombre del archivo de las cabeceras si es posible
+            let filename = `programacion_${format}.` + (format === 'excel' ? 'xlsx' : format);
+            const disposition = response.headers.get('Content-Disposition');
+            if (disposition && disposition.indexOf('attachment') !== -1) {
+                const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+                if (matches != null && matches[1]) { 
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+            return response.blob().then(blob => ({blob, filename}));
+        } else {
+            return response.json().then(err => { throw new Error(err.error || 'Error al exportar'); });
+        }
+    })
+    .then(({blob, filename}) => {
+        const urlBlob = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = urlBlob;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(urlBlob);
+    })
+    .catch(err => {
+        if(spinner) spinner.classList.add('d-none');
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: err.message
+        });
+    });
 }
 {% endif %}
 </script>

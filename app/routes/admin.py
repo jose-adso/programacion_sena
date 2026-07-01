@@ -387,7 +387,19 @@ def cambiar_rol(user_id):
     
     try:
         db.session.commit()
-        return jsonify({"success": True, "message": mensaje})
+        # Devolver datos actualizados del usuario
+        return jsonify({
+            "success": True,
+            "message": mensaje,
+            "user": {
+                "id": user.id,
+                "rol": user.rol,
+                "temp_rol": user.temp_rol,
+                "temp_rol_start": user.temp_rol_start.strftime('%d/%m/%Y') if user.temp_rol_start else None,
+                "temp_rol_end": user.temp_rol_end.strftime('%d/%m/%Y') if user.temp_rol_end else None,
+                "tiene_rol_temporal": user.temp_rol is not None
+            }
+        })
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "error": str(e)}), 500

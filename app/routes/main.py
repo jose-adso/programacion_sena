@@ -8,6 +8,16 @@ from datetime import datetime
 from sqlalchemy.orm import joinedload
 import re
 import unicodedata
+import csv
+import io
+import os
+from flask import Response, make_response
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, PatternFill
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import landscape, letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Image as RLImage, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 main_bp = Blueprint("main", __name__)
 
@@ -958,3 +968,286 @@ def get_week_dates():
         'week_start': week_start,
         'week_end': week_end
     })
+
+
+@main_bp.route("/export_programacion")
+@login_required
+def export_programacion():
+    import logging
+    # Solo Administradores y Super Admin pueden exportar
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador']):
+        return jsonify({"success": False, "error": "No autorizado para exportar"}), 403
+
+    export_format = request.args.get('format', 'csv')
+    try:
+        month = int(request.args.get('month', 0))
+        year = int(request.args.get('year', 2026))
+    except ValueError:
+        return jsonify({"success": False, "error": "Mes o año inválidos"}), 400
+
+    program_id = request.args.get('program_id', type=int)
+    instructor_name = request.args.get('instructor_name')
+    professional_profile = (request.args.get('professional_profile') or '').strip()
+
+    query = CalendarAssignment.query.filter_by(month=month, year=year)
+    
+    if program_id:
+        query = query.filter_by(training_program_id=program_id)
+    if instructor_name:
+        query = query.filter_by(instructor_name=instructor_name)
+    if professional_profile:
+        query = _filter_query_by_professional_profile(query, professional_profile)
+
+    assignments = query.options(joinedload(CalendarAssignment.training_program)).order_by(
+        CalendarAssignment.day_number, CalendarAssignment.hour
+    ).all()
+
+    if not assignments:
+        return jsonify({"success": False, "error": "No hay datos para exportar con los filtros actuales"}), 404
+
+    # Mapeo de instructor a gestor (por ID para mayor precisión)
+    from app.models.users import Users, GestorEquipo
+    import unicodedata
+
+    def normalize_name(name):
+        """Normaliza nombre: sin acentos, sin espacios extra, en minúsculas"""
+        if not name:
+            return ""
+        # Eliminar acentos
+        name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII')
+        # Eliminar espacios extra y convertir a minúsculas
+        return ' '.join(name.split()).lower()
+
+    instructor_gestor_map = {}
+    instructor_name_to_id = {}
+    all_gestor_equipos = GestorEquipo.query.all()
+
+    for ge in all_gestor_equipos:
+        instructor_user = Users.query.get(ge.instructor_id)
+        gestor_user = Users.query.get(ge.gestor_id)
+        if instructor_user and gestor_user:
+            # Mapeo por ID
+            instructor_gestor_map[ge.instructor_id] = gestor_user.nombre
+            # Mapeo por nombre normalizado (sin acentos, sin espacios extra)
+            normalized_name = normalize_name(instructor_user.nombre)
+            instructor_name_to_id[normalized_name] = ge.instructor_id
+
+    # Obtener competencias por programa de formación
+    program_competencies = {}
+    all_competency_records = CompetencyRecord.query.all()
+    for record in all_competency_records:
+        if record.training_program_id not in program_competencies:
+            program_competencies[record.training_program_id] = []
+        program_competencies[record.training_program_id].append(record.competencia)
+
+    # Duración de jornadas (igual que en home.html)
+    horas_por_jornada = {7: 5, 12: 6, 18: 4}
+
+    # Función para convertir hora de formato 24h a 12h con AM/PM
+    def format_hour_12h(hour_24):
+        if hour_24 == 0:
+            return f"12:00 AM"
+        elif hour_24 < 12:
+            return f"{hour_24}:00 AM"
+        elif hour_24 == 12:
+            return f"12:00 PM"
+        else:
+            return f"{hour_24 - 12}:00 PM"
+
+    # Función para convertir a Title Case (primera letra mayúscula de cada palabra)
+    def to_title_case(text):
+        if not text:
+            return ""
+        # Dividir por espacios y guiones, capitalizar cada palabra
+        words = text.replace('-', ' ').split()
+        title_words = []
+        for word in words:
+            if word:
+                title_words.append(word[0].upper() + word[1:].lower() if len(word) > 1 else word.upper())
+        # Reconstruir con guiones si los había
+        result = ' '.join(title_words)
+        return result
+
+    # Preparar datos
+    meses_es = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    mes_str = meses_es[month] if 0 <= month <= 11 else str(month)
+    
+    headers = ['Grupo/Ficha', 'Programa', 'Lugar', 'Horario', 'Competencia', 'Instructor Líder', 'Instructor Gestor', 'Mes', 'Fechas/Días']
+    
+    from collections import defaultdict
+    grouped_assignments = defaultdict(list)
+    
+    for assign in assignments:
+        program = assign.training_program
+        ficha = program.ficha_number if program else ""
+        programa = to_title_case(program.program_name) if program else ""
+        lugar = to_title_case(program.location_municipality) if program and program.location_municipality else ""
+        
+        # Calcular horario como rango (inicio - fin) en formato 12h con AM/PM
+        duracion = horas_por_jornada.get(assign.hour, 2)  # Por defecto 2 horas si no está definido
+        hora_fin = assign.hour + duracion
+        horario = f"{format_hour_12h(assign.hour)} - {format_hour_12h(hora_fin)}"
+        
+        # Obtener competencia - prioridad: CalendarAssignment.competencia, luego CompetencyRecord
+        competencia = ""
+        if assign.competencia:
+            competencia = to_title_case(assign.competencia)
+        elif program and program.id in program_competencies:
+            competencias_list = program_competencies[program.id]
+            competencia = to_title_case(competencias_list[0]) if competencias_list else ""
+        
+        # Si aún no hay competencia, usar el subject como fallback
+        if not competencia and assign.subject:
+            competencia = to_title_case(assign.subject)
+        
+        instructor = to_title_case(assign.instructor_name)
+        # Intentar obtener gestor por nombre normalizado
+        instructor_key = normalize_name(assign.instructor_name)
+        gestor = ""
+
+        if instructor_key in instructor_name_to_id:
+            instructor_id = instructor_name_to_id[instructor_key]
+            gestor = to_title_case(instructor_gestor_map.get(instructor_id, ""))
+        else:
+            # Fallback: intentar coincidencia parcial
+            for norm_name, inst_id in instructor_name_to_id.items():
+                if instructor_key in norm_name or norm_name in instructor_key:
+                    gestor = to_title_case(instructor_gestor_map.get(inst_id, ""))
+                    break
+        
+        key = (ficha, programa, lugar, horario, competencia, instructor, gestor, mes_str)
+        grouped_assignments[key].append((assign.day_number, assign.day))  # Guardar ambos: número y nombre del día
+        
+    rows = []
+    for key, days in grouped_assignments.items():
+        ficha, programa, lugar, horario, competencia, instructor, gestor, mes_val = key
+        
+        # Agrupar días mostrando número y nombre (ej. 3 (Lun), 4 (Mar), 5 (Mié) y 6 (Jue))
+        # Obtener días únicos por número para evitar duplicados
+        unique_days = {}
+        for day_num, day_name in days:
+            if day_num not in unique_days:
+                unique_days[day_num] = day_name
+        
+        sorted_days = sorted(unique_days.items())
+        if not sorted_days:
+            fechas_str = ""
+        elif len(sorted_days) == 1:
+            day_num, day_name = sorted_days[0]
+            # Abreviar nombre del día (Lunes -> Lun, Martes -> Mar, etc.)
+            day_abbr = day_name[:3] if day_name else ""
+            fechas_str = f"{day_num} ({day_abbr})"
+        else:
+            day_strings = []
+            for day_num, day_name in sorted_days[:-1]:
+                day_abbr = day_name[:3] if day_name else ""
+                day_strings.append(f"{day_num} ({day_abbr})")
+            last_day_num, last_day_name = sorted_days[-1]
+            last_day_abbr = last_day_name[:3] if last_day_name else ""
+            fechas_str = ", ".join(day_strings) + f" y {last_day_num} ({last_day_abbr})"
+            
+        rows.append([
+            ficha,
+            programa,
+            lugar,
+            horario,
+            competencia,
+            instructor,
+            gestor,
+            mes_val,
+            fechas_str
+        ])
+
+    filename_base = f"programacion_{mes_str.lower()}_{year}"
+
+    if export_format == 'csv':
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=';')
+        writer.writerow(headers)
+        writer.writerows(rows)
+        
+        response = make_response(output.getvalue().encode('utf-8-sig')) # UTF-8 con BOM para Excel
+        response.headers["Content-Disposition"] = f"attachment; filename={filename_base}.csv"
+        response.headers["Content-type"] = "text/csv; charset=utf-8"
+        return response
+
+    elif export_format == 'excel':
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"{mes_str} {year}"
+        
+        # Estilos de cabecera
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill("solid", fgColor="4F81BD")
+        header_align = Alignment(horizontal="center", vertical="center")
+        
+        ws.append(headers)
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            # Autoajuste básico
+            ws.column_dimensions[cell.column_letter].width = 25
+        
+        for row in rows:
+            ws.append(row)
+            
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        response = make_response(output.getvalue())
+        response.headers["Content-Disposition"] = f"attachment; filename={filename_base}.xlsx"
+        response.headers["Content-type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        return response
+
+    elif export_format == 'pdf':
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(output, pagesize=landscape(letter), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Logo
+        logo_path = os.path.join(request.environ.get('APP_ROOT', 'app'), 'static', '16 mar 2026, 09_19_27.png')
+        if not os.path.exists(logo_path):
+            logo_path = os.path.join('app', 'static', '16 mar 2026, 09_19_27.png')
+            
+        if os.path.exists(logo_path):
+            img = RLImage(logo_path, width=80, height=80)
+            elements.append(img)
+            
+        title = Paragraph(f"<b>Programación de Fichas - {mes_str} {year}</b>", styles['Title'])
+        elements.append(title)
+        elements.append(Spacer(1, 20))
+        
+        pdf_headers = [Paragraph(f"<b>{h}</b>", styles['Normal']) for h in headers]
+        pdf_data = [pdf_headers]
+        
+        # Ajustar anchos de columnas
+        col_widths = [60, 80, 60, 50, 100, 80, 80, 50, 100]
+        
+        for r in rows:
+            pdf_data.append([Paragraph(str(cell), styles['Normal']) for cell in r])
+            
+        t = Table(pdf_data, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#4F81BD')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.black),
+            ('BOX', (0,0), (-1,-1), 0.25, colors.black),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('TOPPADDING', (0,0), (-1,-1), 6),
+        ]))
+        
+        elements.append(t)
+        doc.build(elements)
+        
+        response = make_response(output.getvalue())
+        response.headers["Content-Disposition"] = f"attachment; filename={filename_base}.pdf"
+        response.headers["Content-type"] = "application/pdf"
+        return response
+
+    return jsonify({"success": False, "error": "Formato no soportado"}), 400
