@@ -1,9 +1,10 @@
 from flask import Blueprint, render_template, jsonify, request
 from flask_login import login_required, current_user
+from flask_mail import Message
 from app.models.competency import CompetencyRecord, CalendarAssignment
 from app.models.training import TrainingProgram
 from app.models.users import Users, GestorEquipo
-from app import db
+from app import db, mail
 from datetime import datetime
 from sqlalchemy.orm import joinedload
 import re
@@ -1005,8 +1006,8 @@ def get_week_dates():
 @login_required
 def export_programacion():
     import logging
-    # Super admin, administradores y gestores pueden exportar
-    if not (current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador', 'gestor']):
+    # Super admin, administradores, gestores e instructores pueden exportar
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador', 'gestor', 'instructor']):
         return jsonify({"success": False, "error": "No autorizado para exportar"}), 403
 
     export_format = request.args.get('format', 'csv')
@@ -1021,6 +1022,20 @@ def export_programacion():
     professional_profile = (request.args.get('professional_profile') or '').strip()
 
     query = CalendarAssignment.query.filter_by(month=month, year=year)
+
+    if current_user.rol_activo == "instructor":
+        query = query.filter_by(instructor_name=current_user.nombre)
+    elif current_user.rol_activo == "gestor":
+        gestor_equipo_ids = [member.instructor_id for member in GestorEquipo.query.filter_by(gestor_id=current_user.id).all()]
+        gestor_equipo_names = []
+        for instructor_id in gestor_equipo_ids:
+            instructor_user = Users.query.get(instructor_id)
+            if instructor_user and instructor_user.nombre:
+                gestor_equipo_names.append(instructor_user.nombre)
+        if gestor_equipo_names:
+            query = query.filter(CalendarAssignment.instructor_name.in_(gestor_equipo_names))
+        else:
+            query = query.filter(CalendarAssignment.id == -1)
     
     if program_id:
         query = query.filter_by(training_program_id=program_id)
@@ -1180,16 +1195,18 @@ def export_programacion():
 
     filename_base = f"programacion_{mes_str.lower()}_{year}"
 
+    file_bytes = None
+    file_name = f"{filename_base}.csv"
+    mime_type = "text/csv; charset=utf-8"
+
     if export_format == 'csv':
         output = io.StringIO()
         writer = csv.writer(output, delimiter=';')
         writer.writerow(headers)
         writer.writerows(rows)
-        
-        response = make_response(output.getvalue().encode('utf-8-sig')) # UTF-8 con BOM para Excel
-        response.headers["Content-Disposition"] = f"attachment; filename={filename_base}.csv"
-        response.headers["Content-type"] = "text/csv; charset=utf-8"
-        return response
+        file_bytes = output.getvalue().encode('utf-8-sig')
+        file_name = f"{filename_base}.csv"
+        mime_type = "text/csv; charset=utf-8"
 
     elif export_format == 'excel':
         wb = Workbook()
@@ -1217,10 +1234,9 @@ def export_programacion():
         wb.save(output)
         output.seek(0)
         
-        response = make_response(output.getvalue())
-        response.headers["Content-Disposition"] = f"attachment; filename={filename_base}.xlsx"
-        response.headers["Content-type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        return response
+        file_bytes = output.getvalue()
+        file_name = f"{filename_base}.xlsx"
+        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
     elif export_format == 'pdf':
         output = io.BytesIO()
@@ -1265,9 +1281,65 @@ def export_programacion():
         elements.append(t)
         doc.build(elements)
         
-        response = make_response(output.getvalue())
-        response.headers["Content-Disposition"] = f"attachment; filename={filename_base}.pdf"
-        response.headers["Content-type"] = "application/pdf"
-        return response
+        file_bytes = output.getvalue()
+        file_name = f"{filename_base}.pdf"
+        mime_type = "application/pdf"
 
-    return jsonify({"success": False, "error": "Formato no soportado"}), 400
+    if file_bytes is None:
+        return jsonify({"success": False, "error": "Formato no soportado"}), 400
+
+    recipient_emails = []
+    current_role = getattr(current_user, "rol_activo", None) or getattr(current_user, "rol", None) or ""
+
+    def add_recipient(email):
+        normalized_email = (email or "").strip().lower()
+        if normalized_email and normalized_email not in recipient_emails:
+            recipient_emails.append(normalized_email)
+
+    current_user_record = Users.query.get(getattr(current_user, "id", None)) if getattr(current_user, "id", None) else None
+    if current_user_record and (getattr(current_user_record, "correo", "") or "").strip():
+        add_recipient(getattr(current_user_record, "correo", ""))
+
+    if current_role == "gestor":
+        gestor_equipo_ids = [member.instructor_id for member in GestorEquipo.query.filter_by(gestor_id=current_user.id).all()]
+        for instructor_id in gestor_equipo_ids:
+            instructor_user = Users.query.get(instructor_id)
+            if instructor_user and (getattr(instructor_user, "correo", "") or "").strip():
+                add_recipient(getattr(instructor_user, "correo", ""))
+
+    for assign in assignments:
+        instructor_name = (getattr(assign, "instructor_name", "") or "").strip()
+        if not instructor_name:
+            continue
+        instructor_user = Users.query.filter(db.func.lower(Users.nombre) == db.func.lower(instructor_name)).first()
+        if instructor_user and (getattr(instructor_user, "correo", "") or "").strip():
+            add_recipient(getattr(instructor_user, "correo", ""))
+
+    recipient_emails = [email for email in recipient_emails if email]
+
+    if recipient_emails:
+        try:
+            role_label = "tu programación"
+            if current_user.rol_activo == "gestor":
+                role_label = "tu equipo de trabajo"
+            elif current_user.rol_activo not in {"instructor", "gestor"}:
+                role_label = "la programación exportada"
+
+            msg = Message(
+                subject=f"Programación de fichas - {mes_str} {year}",
+                recipients=recipient_emails,
+                body=(
+                    f"Hola {current_user.nombre},\n\n"
+                    f"Adjunto encontrarás la programación de fichas exportada para {mes_str} {year}.\n"
+                    f"Este archivo incluye la información correspondiente a {role_label}."
+                )
+            )
+            msg.attach(file_name, mime_type, file_bytes)
+            mail.send(msg)
+        except Exception as exc:
+            print(f"[MAIL] No se pudo enviar el correo: {exc}")
+
+    response = make_response(file_bytes)
+    response.headers["Content-Disposition"] = f"attachment; filename={file_name}"
+    response.headers["Content-type"] = mime_type
+    return response

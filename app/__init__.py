@@ -52,12 +52,13 @@ def create_app():
     mail_username = os.getenv("MAIL_USERNAME", "ruedamoncadam@gmail.com").strip()
     mail_password = os.getenv("MAIL_PASSWORD", "psyv cwjo tnbd wekg").strip().replace(" ", "")
 
-    app.config["MAIL_SERVER"] = "smtp.gmail.com"
-    app.config["MAIL_PORT"] = 587
-    app.config["MAIL_USE_TLS"] = True
+    app.config["MAIL_SERVER"] = os.getenv("MAIL_SERVER", "smtp.gmail.com")
+    app.config["MAIL_PORT"] = int(os.getenv("MAIL_PORT", "587"))
+    app.config["MAIL_USE_TLS"] = os.getenv("MAIL_USE_TLS", "True").lower() in {"1", "true", "yes", "on"}
     app.config["MAIL_USERNAME"] = mail_username
     app.config["MAIL_PASSWORD"] = mail_password
     app.config["MAIL_DEFAULT_SENDER"] = mail_username
+    app.config["MAIL_USE_SSL"] = os.getenv("MAIL_USE_SSL", "False").lower() in {"1", "true", "yes", "on"}
 
     db.init_app(app)
     login_manager.init_app(app)
