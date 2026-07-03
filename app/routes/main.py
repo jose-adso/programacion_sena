@@ -82,6 +82,37 @@ def _normalize_competency_pair(competencia, resultado=""):
     )
 
 
+def _normalize_name(value):
+    """Normaliza nombres para comparaciones simples entre usuarios e instructores."""
+    if not value:
+        return ""
+    value = unicodedata.normalize("NFKD", value).encode("ASCII", "ignore").decode("ASCII")
+    return " ".join(value.split()).lower()
+
+
+def _resolve_gestor_name(instructor_name, instructor_name_to_id, instructor_gestor_map, current_user=None, gestor_users_by_name=None):
+    """Resuelve el nombre del gestor para una asignación en exportaciones."""
+    if current_user and getattr(current_user, "rol_activo", None) == "gestor":
+        return getattr(current_user, "nombre", "") or ""
+
+    normalized_instructor_name = _normalize_name(instructor_name)
+    if not normalized_instructor_name:
+        return ""
+
+    if gestor_users_by_name and normalized_instructor_name in gestor_users_by_name:
+        return gestor_users_by_name[normalized_instructor_name]
+
+    if normalized_instructor_name in instructor_name_to_id:
+        instructor_id = instructor_name_to_id[normalized_instructor_name]
+        return instructor_gestor_map.get(instructor_id, "")
+
+    for norm_name, inst_id in instructor_name_to_id.items():
+        if normalized_instructor_name in norm_name or norm_name in normalized_instructor_name:
+            return instructor_gestor_map.get(inst_id, "")
+
+    return ""
+
+
 def _extract_competency_pairs(competencia, resultado=""):
     competencias = _split_multi_value(competencia)
     resultados = _split_multi_value(resultado)
@@ -974,8 +1005,8 @@ def get_week_dates():
 @login_required
 def export_programacion():
     import logging
-    # Solo Administradores y Super Admin pueden exportar
-    if not (current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador']):
+    # Super admin, administradores y gestores pueden exportar
+    if not (current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador', 'gestor']):
         return jsonify({"success": False, "error": "No autorizado para exportar"}), 403
 
     export_format = request.args.get('format', 'csv')
@@ -1007,19 +1038,14 @@ def export_programacion():
 
     # Mapeo de instructor a gestor (por ID para mayor precisión)
     from app.models.users import Users, GestorEquipo
-    import unicodedata
-
-    def normalize_name(name):
-        """Normaliza nombre: sin acentos, sin espacios extra, en minúsculas"""
-        if not name:
-            return ""
-        # Eliminar acentos
-        name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII')
-        # Eliminar espacios extra y convertir a minúsculas
-        return ' '.join(name.split()).lower()
 
     instructor_gestor_map = {}
     instructor_name_to_id = {}
+    gestor_users_by_name = {
+        _normalize_name(user.nombre): user.nombre
+        for user in Users.query.filter(Users.rol == "gestor").all()
+        if getattr(user, "nombre", "")
+    }
     all_gestor_equipos = GestorEquipo.query.all()
 
     for ge in all_gestor_equipos:
@@ -1029,7 +1055,7 @@ def export_programacion():
             # Mapeo por ID
             instructor_gestor_map[ge.instructor_id] = gestor_user.nombre
             # Mapeo por nombre normalizado (sin acentos, sin espacios extra)
-            normalized_name = normalize_name(instructor_user.nombre)
+            normalized_name = _normalize_name(instructor_user.nombre)
             instructor_name_to_id[normalized_name] = ge.instructor_id
 
     # Obtener competencias por programa de formación
@@ -1101,19 +1127,13 @@ def export_programacion():
             competencia = to_title_case(assign.subject)
         
         instructor = to_title_case(assign.instructor_name)
-        # Intentar obtener gestor por nombre normalizado
-        instructor_key = normalize_name(assign.instructor_name)
-        gestor = ""
-
-        if instructor_key in instructor_name_to_id:
-            instructor_id = instructor_name_to_id[instructor_key]
-            gestor = to_title_case(instructor_gestor_map.get(instructor_id, ""))
-        else:
-            # Fallback: intentar coincidencia parcial
-            for norm_name, inst_id in instructor_name_to_id.items():
-                if instructor_key in norm_name or norm_name in instructor_key:
-                    gestor = to_title_case(instructor_gestor_map.get(inst_id, ""))
-                    break
+        gestor = to_title_case(_resolve_gestor_name(
+            assign.instructor_name,
+            instructor_name_to_id,
+            instructor_gestor_map,
+            current_user,
+            gestor_users_by_name,
+        ))
         
         key = (ficha, programa, lugar, horario, competencia, instructor, gestor, mes_str)
         grouped_assignments[key].append((assign.day_number, assign.day))  # Guardar ambos: número y nombre del día

@@ -2486,7 +2486,7 @@ function saveEquipo() {
     }));
 }
 {% endif %}
-{% if current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador'] %}
+{% if current_user.is_base_super_admin or current_user.rol_activo in ['super admin', 'administrador', 'gestor'] %}
 function triggerExportInline(format, event) {
     if(event) event.preventDefault();
     
