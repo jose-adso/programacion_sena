@@ -50,7 +50,7 @@ def create_app():
 
     # Configuración de Flask-Mail
     mail_username = os.getenv("MAIL_USERNAME", "ruedamoncadam@gmail.com").strip()
-    mail_password = os.getenv("MAIL_PASSWORD", "fhsa hhek fnxg axlq").strip().replace(" ", "")
+    mail_password = os.getenv("MAIL_PASSWORD", "psyv cwjo tnbd wekg").strip().replace(" ", "")
 
     app.config["MAIL_SERVER"] = "smtp.gmail.com"
     app.config["MAIL_PORT"] = 587
