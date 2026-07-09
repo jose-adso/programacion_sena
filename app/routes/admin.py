@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from flask_mail import Message
 from openpyxl import load_workbook
-from app.models.users import Users
+from app.models.users import Users, GestorEquipo
 from app import db, mail
 from datetime import datetime, timedelta
 import smtplib
@@ -272,12 +272,65 @@ def panel():
     else:
         users = [current_user] if current_user.rol in visible_roles else []
 
+    gestores = Users.query.filter_by(rol="gestor").order_by(Users.nombre).all()
+    instructores = Users.query.filter_by(rol="instructor").order_by(Users.nombre).all()
+    gestor_equipos = {}
+    for gestor in gestores:
+        miembros = (
+            db.session.query(Users.nombre)
+            .join(GestorEquipo, GestorEquipo.instructor_id == Users.id)
+            .filter(GestorEquipo.gestor_id == gestor.id)
+            .order_by(Users.nombre)
+            .all()
+        )
+        gestor_equipos[gestor.id] = [nombre for (nombre,) in miembros]
+
     return render_template(
         "admin/panel.html",
         users=users,
         can_manage_users=can_manage_users,
         is_base_super_admin=is_base_super_admin,
+        gestores=gestores,
+        instructores=instructores,
+        gestor_equipos=gestor_equipos,
     )
+
+
+@admin_bp.route("/asignar_equipo", methods=["POST"])
+@login_required
+def asignar_equipo():
+    if current_user.rol_activo not in ["super admin", "administrador"] and not current_user.is_base_super_admin:
+        flash("No tienes permiso para asignar equipos de trabajo", "danger")
+        return redirect(url_for("admin.panel"))
+
+    gestor_id = request.form.get("gestor_id", "").strip()
+    instructor_ids = request.form.getlist("instructor_ids")
+
+    if not gestor_id:
+        flash("Debes seleccionar un gestor", "danger")
+        return redirect(url_for("admin.panel"))
+
+    gestor = Users.query.get(gestor_id)
+    if not gestor or gestor.rol != "gestor":
+        flash("El gestor seleccionado no es válido", "danger")
+        return redirect(url_for("admin.panel"))
+
+    try:
+        GestorEquipo.query.filter_by(gestor_id=gestor.id).delete()
+
+        for instructor_id in instructor_ids:
+            instructor = Users.query.get(int(instructor_id))
+            if not instructor or instructor.rol != "instructor":
+                continue
+            db.session.add(GestorEquipo(gestor_id=gestor.id, instructor_id=instructor.id))
+
+        db.session.commit()
+        flash("Equipo de trabajo actualizado correctamente", "success")
+    except Exception:
+        db.session.rollback()
+        flash("No se pudo actualizar el equipo de trabajo", "danger")
+
+    return redirect(url_for("admin.panel"))
 
 
 @admin_bp.route("/enviar-links-instructores", methods=["POST"])
