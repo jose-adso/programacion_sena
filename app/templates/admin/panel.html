@@ -39,9 +39,10 @@
                     </div>
                     <div class="col-md-8">
                         <label class="form-label">Instructores disponibles</label>
+                        <input type="text" id="instructor-filter-input" class="form-control mb-2" placeholder="Filtrar instructores por nombre o correo..." oninput="filterInstructorsList()">
                         <div class="border rounded p-3" style="max-height: 250px; overflow-y: auto;">
                             {% for instructor in instructores %}
-                            <div class="form-check">
+                            <div class="form-check instructor-option" data-search="{{ instructor.nombre }} {{ instructor.correo }}">
                                 <input class="form-check-input" type="checkbox" name="instructor_ids" value="{{ instructor.id }}" id="instructor-{{ instructor.id }}">
                                 <label class="form-check-label" for="instructor-{{ instructor.id }}">
                                     {{ instructor.nombre }} <small class="text-muted">({{ instructor.correo }})</small>
@@ -233,6 +234,17 @@ function filterUsersTable() {
     rows.forEach(row => {
         const text = row.textContent.toLowerCase();
         row.style.display = !filter || text.includes(filter) ? '' : 'none';
+    });
+}
+
+function filterInstructorsList() {
+    const input = document.getElementById('instructor-filter-input');
+    const filter = (input ? input.value : '').toLowerCase().trim();
+    const options = document.querySelectorAll('.instructor-option');
+
+    options.forEach(option => {
+        const text = (option.getAttribute('data-search') || '').toLowerCase();
+        option.style.display = !filter || text.includes(filter) ? '' : 'none';
     });
 }
 
